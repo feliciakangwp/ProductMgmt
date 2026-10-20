@@ -1,7 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router';
 import { LoginPage } from '../auth/LoginPage';
 import { ComingSoonPage } from '../modules/coming-soon/ComingSoonPage';
-import { DesignerPage } from '../modules/process-designer/DesignerPage';
 import { ProcessListPage } from '../modules/processes/ProcessListPage';
 import { MembersPage } from '../modules/projects/MembersPage';
 import { ProjectsPage } from '../modules/projects/ProjectsPage';
@@ -28,7 +27,11 @@ export const router = createBrowserRouter([
       { path: 'projects/:projectId', element: <Navigate to="processes" replace /> },
       { path: 'projects/:projectId/members', element: <MembersPage /> },
       { path: 'projects/:projectId/processes', element: <ProcessListPage /> },
-      { path: 'projects/:projectId/processes/:processId', element: <DesignerPage /> },
+      {
+        path: 'projects/:projectId/processes/:processId',
+        // React Flow and the designer are the bulk of the bundle; load them on demand.
+        lazy: () => import('../modules/process-designer/DesignerPage').then((m) => ({ Component: m.DesignerPage })),
+      },
       { path: 'modules/:slug', element: <ComingSoonPage /> },
       { path: '*', element: <ComingSoonPage /> },
     ],

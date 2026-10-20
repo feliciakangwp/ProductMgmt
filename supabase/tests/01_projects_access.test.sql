@@ -10,6 +10,11 @@ select tests.create_user('mallory') is not null; -- not a member
 select tests.ok((select display_name from public.profiles where id = tests.uid('alice')) = 'Alice',
   'a profile is created for each new auth user');
 
+insert into auth.users (email, raw_user_meta_data) values (null, jsonb_build_object('display_name', repeat('x', 300)));
+insert into auth.users (email) values (null);
+select tests.ok((select count(*) from public.profiles where email = '') = 2 and (select max(char_length(display_name)) from public.profiles) = 120,
+  'users without email and with long names can sign up');
+
 -- Anonymous users cannot read anything.
 set local role anon;
 select tests.throws('select * from public.projects', '42501', 'anon cannot read projects');

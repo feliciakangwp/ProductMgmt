@@ -25,7 +25,8 @@ create table public.profiles (
   constraint profiles_display_name_length check (char_length(display_name) between 1 and 120)
 );
 
-create unique index profiles_email_key on public.profiles (lower(email));
+-- Users without an email (e.g. phone sign-in) are stored with an empty email.
+create unique index profiles_email_key on public.profiles (lower(email)) where email <> '';
 
 create function public.handle_new_user()
 returns trigger
@@ -38,10 +39,13 @@ begin
   values (
     new.id,
     coalesce(new.email, ''),
-    coalesce(
-      nullif(trim(new.raw_user_meta_data ->> 'display_name'), ''),
-      nullif(split_part(coalesce(new.email, ''), '@', 1), ''),
-      'User'
+    left(
+      coalesce(
+        nullif(trim(new.raw_user_meta_data ->> 'display_name'), ''),
+        nullif(split_part(coalesce(new.email, ''), '@', 1), ''),
+        'User'
+      ),
+      120
     )
   );
   return new;
