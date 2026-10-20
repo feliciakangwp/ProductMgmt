@@ -137,8 +137,43 @@ describe('demo backend: rules mirrored from the database', () => {
     expect(data.requirements.fields.some((f) => f.nodeKey === submit.elementKey)).toBe(false);
   });
 
-  it('reports a clear error when Claude is not available', async () => {
+  it('falls back to labelled sample responses when Claude is not available', async () => {
     const { draft } = await seeded();
-    await expect(backend.suggestFields({ versionId: draft.id })).rejects.toMatchObject({ code: 'ai_unavailable' });
+    expect(await backend.demo!.ai.mode()).toBe('samples');
+    const result = await backend.suggestFields({ versionId: draft.id });
+    expect(result.model).toBe('Sample responses (offline demo)');
+    expect(result.proposal.fields.length).toBeGreaterThan(0);
+  });
+});
+
+describe('demo backend: delivery', () => {
+  it('seeds a delivery history through the delivery service', async () => {
+    const { project } = await seeded();
+    const snapshot = await backend.delivery.snapshot({ projectId: project.id });
+    expect(snapshot.sprints.map((s) => [s.name, s.status])).toEqual([
+      ['Sprint 1', 'completed'],
+      ['Sprint 2', 'active'],
+    ]);
+    expect(snapshot.stories.filter((s) => s.storyType === 'technical').length).toBeGreaterThanOrEqual(3);
+    expect(snapshot.stories.some((s) => s.blocked)).toBe(true);
+    expect(snapshot.executions.map((e) => e.status)).toEqual(['failed']);
+    expect(snapshot.defects.map((d) => [d.refCode, d.status])).toEqual([['DEF-001', 'in_progress']]);
+    expect(snapshot.events.filter((e) => e.kind === 'work_status').length).toBeGreaterThan(10);
+  });
+
+  it('applies the viewer\'s role and rolls back failed operations', async () => {
+    const { project } = await seeded();
+    await backend.delivery.snapshot({ projectId: project.id });
+    backend.demo!.setMyRole(project.id, 'business_user');
+    await expect(
+      backend.delivery.createStory({ projectId: project.id, storyType: 'functional', content: { title: 'Nope' } }),
+    ).rejects.toMatchObject({ code: '42501' });
+    backend.demo!.setMyRole(project.id, 'admin');
+    const before = await backend.delivery.snapshot({ projectId: project.id });
+    const sprint = before.sprints.find((s) => s.status === 'active')!;
+    await expect(
+      backend.delivery.setSprintStatus({ sprintId: sprint.id, revision: sprint.revision + 5, status: 'completed' }),
+    ).rejects.toMatchObject({ code: 'PF409' });
+    expect((await backend.delivery.snapshot({ projectId: project.id })).events.length).toBe(before.events.length);
   });
 });

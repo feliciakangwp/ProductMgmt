@@ -1,4 +1,5 @@
 import type {
+  DeliveryClient,
   Actor,
   ActorKind,
   BusinessRule,
@@ -156,6 +157,13 @@ export interface DemoControls {
   /** Lets the viewer try the app as another project role. */
   setMyRole(projectId: string, role: ProjectRole): void;
   myRole(projectId: string): ProjectRole | null;
+  /** How the demo reaches Claude (see demo-ai.ts). */
+  ai: {
+    mode(): Promise<'claude_runtime' | 'own_key' | 'samples'>;
+    hasRuntime(): Promise<boolean>;
+    setKey(key: string | null): void;
+    hasKey(): boolean;
+  };
 }
 
 export interface Backend {
@@ -220,5 +228,8 @@ export interface Backend {
   saveVersionData(payload: SaveDataPayload): Promise<number>;
 
   suggestFields(args: { versionId: string; nodeKeys?: string[] }, signal?: AbortSignal): Promise<DataSuggestionResponse>;
+  /** Phases 3 to 7: stories, backlog, sprints, UAT, defects and AI insights (see packages/domain/src/delivery/service.ts). */
+  readonly delivery: DeliveryClient;
+
   translateValidationRule(args: { fieldId: string; text: string }, signal?: AbortSignal): Promise<RuleTranslationResponse>;
 }

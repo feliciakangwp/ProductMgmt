@@ -2,13 +2,16 @@ import {
   analysisToProposal,
   applyDataProposal,
   buildFieldSuggestionPrompt,
-  buildRetryMessage,
   buildRuleTranslationPrompt,
   buildSuggestionContext,
   buildUserMessage,
   businessRuleFromRow,
   columnFromRow,
   EMPTY_RULE_PARAMS,
+  emptyDeliveryTables,
+  type DeliveryClient,
+  type DeliveryTables,
+  type ProjectContext,
   fieldFromRow,
   fieldSuggestionsJsonSchema,
   findingFromRow,
@@ -25,7 +28,6 @@ import {
   type BusinessRuleActivityRow,
   type BusinessRuleRow,
   type FieldDefinitionRow,
-  type ParseResult,
   type PhysicalColumnRow,
   type SaveDataPayload,
   type ValidationRuleRow,
@@ -51,6 +53,8 @@ import {
 import { DEBT_WRITE_OFF_ANALYSIS, DEBT_WRITE_OFF_DESCRIPTION, fieldSuggestionsForPrompt } from '@productflow/domain/testing';
 import { AppError } from '../errors';
 import { safeStorage } from '../storage';
+import { demoAi, runStructured } from './demo-ai';
+import { createDemoDelivery } from './demo-delivery';
 import { latestFindingPerKey } from './helpers';
 import type {
   Backend,
@@ -90,7 +94,7 @@ interface DemoMapping {
 }
 
 interface DemoState {
-  schema: 2;
+  schema: 3;
   users: DemoUser[];
   projects: ProjectRow[];
   members: DemoMember[];
@@ -110,9 +114,13 @@ interface DemoState {
   ruleLinks: BusinessRuleActivityRow[];
   activityFields: ActivityFieldRow[];
   activityOutputs: ActivityOutputRow[];
+  /** Phases 3 to 7, kept in the delivery service's own shape. */
+  delivery: DeliveryTables;
+  /** False until the example delivery history has been written (it is created through the service, asynchronously). */
+  deliverySeeded: boolean;
 }
 
-const STORAGE_KEY = 'productflow-demo:v2';
+const STORAGE_KEY = 'productflow-demo:v3';
 export const DEMO_USER_ID = 'demo-user';
 const EDITORS: ProjectRole[] = ['admin', 'business_analyst'];
 const APPROVERS: ProjectRole[] = ['admin', 'product_owner'];
@@ -148,7 +156,7 @@ function nodePrefix(type: ProcessNodeRow['node_type']): string {
 function seed(): DemoState {
   const t = now();
   const state: DemoState = {
-    schema: 2,
+    schema: 3,
     users: [
       { userId: DEMO_USER_ID, email: 'you@demo.productflow', displayName: 'You (demo)' },
       { userId: 'user-priya', email: 'priya.shah@demo.productflow', displayName: 'Priya Shah' },
@@ -173,6 +181,8 @@ function seed(): DemoState {
     ruleLinks: [],
     activityFields: [],
     activityOutputs: [],
+    delivery: emptyDeliveryTables(),
+    deliverySeeded: false,
   };
 
   const project: ProjectRow = {
@@ -189,6 +199,7 @@ function seed(): DemoState {
     { project_id: project.id, user_id: DEMO_USER_ID, role: 'admin', created_at: t },
     { project_id: project.id, user_id: 'user-priya', role: 'product_owner', created_at: t },
     { project_id: project.id, user_id: 'user-marcus', role: 'developer', created_at: t },
+    { project_id: project.id, user_id: 'user-sam', role: 'business_user', created_at: t },
   );
 
   // PRC-001: analysed and approved, with an open draft v2.
@@ -238,7 +249,7 @@ function load(): DemoState {
   if (raw) {
     try {
       const parsed = JSON.parse(raw) as DemoState;
-      if (parsed.schema === 2) return parsed;
+      if (parsed.schema === 3) return parsed;
     } catch {
       /* fall through to a fresh seed */
     }
@@ -679,96 +690,17 @@ function seedDataRequirements(s: DemoState, projectId: string, processId: string
 }
 
 // ---------------------------------------------------------------------------
-// Claude, through the artifact runtime
+// Claude (see demo-ai.ts)
 // ---------------------------------------------------------------------------
-
-interface SampleError {
-  code: string;
-  message: string;
-}
-type SampleJson = (
-  input: string,
-  options?: { modelTier?: 'default' | 'complex' | 'quick'; signal?: AbortSignal },
-) => Promise<unknown>;
-interface ClaudeRuntime {
-  use(name: 'sample'): Promise<{ json: SampleJson } | null>;
-}
-
-async function getSample(): Promise<SampleJson> {
-  const runtime = (globalThis as { claude?: ClaudeRuntime }).claude;
-  const sample = runtime ? await runtime.use('sample') : null;
-  if (!sample) {
-    throw new AppError(
-      'AI analysis needs Claude, which is only available when this demo is opened from its claude.ai link while signed in.',
-      'ai_unavailable',
-    );
-  }
-  return sample.json;
-}
-
-function sampleErrorMessage(error: SampleError): string {
-  switch (error.code) {
-    case 'not_granted':
-    case 'sampling_disabled':
-      return 'This page is not allowed to use Claude. Allow it in the artifact permissions to run the analysis.';
-    case 'rate_limited':
-      return 'Claude is busy or your usage limit was reached. Wait a moment and try again.';
-    case 'session_expired':
-      return 'Your claude.ai session expired. Sign in again and reload the page.';
-    case 'refused':
-      return 'Claude declined to analyse this description. Review the text and try again.';
-    case 'prompt_too_large':
-      return 'The description is too long to analyse in one pass. Split it into smaller processes.';
-    case 'invalid_json':
-      return 'Claude returned a reply that was not a process model. Try again.';
-    default:
-      return 'Claude could not complete the analysis. Try again in a moment.';
-  }
-}
-
-/** Asks Claude for structured JSON, validates it, and retries once with the validation errors. */
-async function runStructured<T>(args: {
-  system: string;
-  user: string;
-  schema: Record<string, unknown>;
-  parse: (raw: string) => ParseResult<T>;
-  retryBase: string;
-  signal?: AbortSignal;
-}): Promise<T> {
-  const json = await getSample();
-  const format = `\n\nReply with only a JSON object that matches this JSON schema exactly (no other text):\n${JSON.stringify(args.schema)}`;
-  let message = args.user;
-  let lastErrors: string[] = [];
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let value: unknown;
-    try {
-      value = await json(`${args.system}\n\n${message}${format}`, { modelTier: 'default', signal: args.signal });
-    } catch (err) {
-      const error = err as SampleError;
-      if (error?.code === 'cancelled') throw new AppError('Cancelled.', 'cancelled');
-      throw new AppError(sampleErrorMessage(error), `ai_${error?.code ?? 'error'}`);
-    }
-    const raw = JSON.stringify(value);
-    const parsed = args.parse(raw);
-    if (parsed.ok) return parsed.value;
-    lastErrors = parsed.errors;
-    message = buildRetryMessage({ original: args.retryBase, invalidOutput: raw, errors: parsed.errors });
-  }
-  throw new AppError(
-    `Claude returned an answer that failed validation (${lastErrors.slice(0, 3).join('; ')}). Try again.`,
-    'ai_invalid_output',
-  );
-}
 
 function analyseWithClaude(
   request: { description: string; processName: string; processType: string },
   signal?: AbortSignal,
-): Promise<ProcessAnalysis> {
+): Promise<{ value: ProcessAnalysis; model: string }> {
   const user = buildUserMessage(request);
   return runStructured({
     system: SYSTEM_PROMPT,
     user,
-    retryBase: user,
     schema: processAnalysisJsonSchema(),
     parse: parseProcessAnalysis,
     signal,
@@ -782,11 +714,89 @@ function analyseWithClaude(
 const listeners = new Set<(session: SessionInfo | null) => void>();
 const demoUser = () => state.users.find((u) => u.userId === DEMO_USER_ID)!;
 
+// ---------------------------------------------------------------------------
+// Delivery (Phases 3 to 7): the shared delivery service over this state
+// ---------------------------------------------------------------------------
+
+function projectContext(projectId: string): ProjectContext {
+  const project = state.projects.find((p) => p.id === projectId)!;
+  const inProject = <T extends { project_id: string }>(rows: T[]) => rows.filter((r) => r.project_id === projectId);
+  return {
+    projectId,
+    projectKey: project?.key ?? '',
+    processes: inProject(state.processes),
+    versions: inProject(state.versions),
+    nodes: inProject(state.nodes),
+    edges: inProject(state.edges),
+    actors: inProject(state.actors).map((a) => ({ id: a.id, name: a.name })),
+    activityFields: inProject(state.activityFields),
+    fields: inProject(state.fields).map(fieldFromRow),
+    validationRules: inProject(state.rules).map(ruleFromRow),
+    businessRules: inProject(state.businessRules).map((r) => businessRuleFromRow(r, state.ruleLinks)),
+    columns: inProject(state.columns).map(columnFromRow),
+    columnMappings: inProject(state.mappings).map((m) => ({ fieldId: m.field_id, columnId: m.column_id, transformation: m.transformation })),
+    members: inProject(state.members).map((m) => ({
+      userId: m.user_id,
+      role: m.role,
+      displayName: state.users.find((u) => u.userId === m.user_id)?.displayName ?? '',
+    })),
+  };
+}
+
+const delivery = createDemoDelivery({
+  userId: DEMO_USER_ID,
+  tables: () => state.delivery,
+  replaceTables: (tables) => {
+    state.delivery = tables;
+  },
+  context: projectContext,
+  memberRole: (projectId, userId) => roleOf(projectId, userId),
+  nextRef: (projectId, prefix) => nextRef(state, projectId, prefix),
+  processProject: (processId) => state.processes.find((p) => p.id === processId)?.project_id ?? null,
+  commit,
+});
+
+let deliveryReady: Promise<void> | null = null;
+
+/** Writes the example delivery history once, the first time delivery data is needed. */
+function ensureDeliverySeed(): Promise<void> {
+  deliveryReady ??= (async () => {
+    if (state.deliverySeeded) return;
+    const project = state.projects.find((p) => p.key === 'DMM');
+    const process = project && state.processes.find((p) => p.project_id === project.id && p.ref_code === 'PRC-001');
+    if (project && process) {
+      // The example history is written by the seeded team, whatever role the viewer chose.
+      const myRole = roleOf(project.id);
+      const me = state.members.find((m) => m.project_id === project.id && m.user_id === DEMO_USER_ID);
+      if (me) me.role = 'admin';
+      try {
+        await delivery.seed(project.id, process.id, { admin: DEMO_USER_ID, productOwner: 'user-priya', developer: 'user-marcus' });
+      } finally {
+        if (me && myRole) me.role = myRole;
+      }
+    }
+    state.deliverySeeded = true;
+    commit();
+  })();
+  return deliveryReady;
+}
+
+const deliveryClient = new Proxy({} as DeliveryClient, {
+  get:
+    (_target, op: string) =>
+    async (input: unknown, signal?: AbortSignal) => {
+      await ensureDeliverySeed();
+      return (delivery.client as unknown as Record<string, (i: unknown, s?: AbortSignal) => Promise<unknown>>)[op]!(input, signal);
+    },
+});
+
 const demoControls: DemoControls = {
   reset() {
     state = seed();
+    deliveryReady = null;
     commit();
   },
+  ai: demoAi,
   setMyRole(projectId, role) {
     const member = state.members.find((m) => m.project_id === projectId && m.user_id === DEMO_USER_ID);
     if (member) member.role = role;
@@ -799,6 +809,7 @@ export function createBackend(): Backend {
   return {
     mode: 'demo',
     demo: demoControls,
+    delivery: deliveryClient,
 
     auth: {
       async getSession() {
@@ -1047,14 +1058,14 @@ export function createBackend(): Backend {
       if (text.length < 20) throw new AppError('Describe the process in at least a sentence or two before analysing it.');
       if (text.length > 20000) throw new AppError('The description must be 20000 characters or fewer.');
       const process = state.processes.find((p) => p.id === version.process_id)!;
-      const analysis = await analyseWithClaude(
+      const { value: analysis, model } = await analyseWithClaude(
         { description: text, processName: process.name, processType: process.process_type },
         signal,
       );
       const runId = uuid();
       state.runs.push({ id: runId, version_id: versionId, accepted_at: null });
       commit();
-      return { runId, model: 'Claude (your claude.ai account)', proposal: analysisToProposal(analysis) };
+      return { runId, model, proposal: analysisToProposal(analysis) };
     },
 
     // -------------------------------------------------------------------
@@ -1419,9 +1430,8 @@ export function createBackend(): Backend {
         throw new AppError('The process map has no activities to define data for. Create the map first.', 'no_activities');
       const prompt = buildFieldSuggestionPrompt(context);
       const ids = new Set(keyByActivityId.keys());
-      const suggestions = await runStructured({
+      const { value: suggestions, model } = await runStructured({
         ...prompt,
-        retryBase: prompt.user,
         schema: fieldSuggestionsJsonSchema(),
         parse: (raw) => parseFieldSuggestions(raw, ids),
         signal,
@@ -1432,7 +1442,7 @@ export function createBackend(): Backend {
       );
       return {
         runId: uuid(),
-        model: 'Claude (your claude.ai account)',
+        model,
         proposal: suggestionsToProposal(suggestions, { keyByActivityId, dictionary, current }),
       };
     },
@@ -1458,16 +1468,15 @@ export function createBackend(): Backend {
           .map((f) => ({ refCode: f.refCode, name: f.name, dataType: f.dataType })),
         text: trimmed,
       });
-      const translation = await runStructured({
+      const { value: translation, model } = await runStructured({
         ...prompt,
-        retryBase: prompt.user,
         schema: ruleTranslationJsonSchema(),
         parse: parseRuleTranslation,
         signal,
       });
       return {
         runId: uuid(),
-        model: 'Claude (your claude.ai account)',
+        model,
         proposal: translationToProposal(translation, dictionary),
       };
     },

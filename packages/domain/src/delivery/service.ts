@@ -1457,7 +1457,7 @@ export type DeliveryOpInput<K extends DeliveryOpName> = z.input<DeliveryOps[K]['
 export type DeliveryOpResult<K extends DeliveryOpName> = Awaited<ReturnType<DeliveryOps[K]['run']>>;
 
 /** A client for the delivery operations, as the web app sees them. */
-export type DeliveryClient = { [K in DeliveryOpName]: (input: DeliveryOpInput<K>) => Promise<DeliveryOpResult<K>> };
+export type DeliveryClient = { [K in DeliveryOpName]: (input: DeliveryOpInput<K>, signal?: AbortSignal) => Promise<DeliveryOpResult<K>> };
 
 /** Validates an operation's input and runs it. Unknown operations and invalid input are rejected. */
 export async function runDeliveryOp(ctx: OpContext, name: string, input: unknown): Promise<unknown> {
