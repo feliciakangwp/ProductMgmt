@@ -6,6 +6,8 @@ import { defineConfig } from 'vite';
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
+  // Relative asset paths, so the demo also works from a sub-path such as GitHub Pages (/<repo>/).
+  base: mode === 'demo' ? './' : '/',
   resolve: {
     alias: {
       // The demo build runs entirely in the browser; see src/lib/backend/demo.ts.

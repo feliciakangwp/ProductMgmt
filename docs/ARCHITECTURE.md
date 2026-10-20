@@ -3,7 +3,7 @@
 ProductFlow AI is an AI-assisted product management and delivery platform. It connects business process
 design, data requirements, user stories, delivery and UAT through one structured, traceable requirements
 model. This document describes the overall architecture, the data model, how modules depend on each other,
-and what Phase 1 (Process Design) delivers.
+and what each phase delivers.
 
 ## 1. System overview
 
@@ -12,11 +12,11 @@ and what Phase 1 (Process Design) delivers.
 │  apps/web  (React + Vite)  │  JWT   │  apps/api  (Node + Fastify)  │
 │  Tailwind, React Flow,     ├───────►│  • Claude process analysis   │
 │  Dagre, React Router,      │ /api/* │  • Response validation (zod) │
-│  TanStack Query            │        │  • Role + version checks     │
+│  TanStack Query            │        │  • Delivery service (rules)  │
 └──────────┬─────────────────┘        │  • Holds ANTHROPIC_API_KEY   │
            │ supabase-js              └──────────────┬───────────────┘
-           │ (user JWT, RLS applies)                 │ supabase-js (the *user's* JWT,
-           ▼                                         ▼  never the service-role key)
+           │ (user JWT, RLS applies)                 │ user's JWT for Phases 1-2; service
+           ▼                                         ▼  role for delivery, after role checks
 ┌────────────────────────────────────────────────────────────────────┐
 │  Supabase: PostgreSQL + Auth + Row Level Security                  │
 │  • Tables with RLS by project membership and role                  │
@@ -35,12 +35,12 @@ and what Phase 1 (Process Design) delivers.
 
 **Principles in the implementation**
 
-| Principle                    | How it is enforced                                                                                                                                                                                                                     |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Single source of truth       | One relational model in Postgres; `packages/domain` is the only definition of its TypeScript shape. React Flow only renders a projection of the domain graph.                                                                          |
-| Security in the database     | RLS on every table; workflow writes are only possible through RPCs that check the caller's project role. The API calls Supabase with the user's own JWT, so it cannot bypass RLS. The UI hides controls only for usability.            |
-| Human-in-the-loop AI         | Claude's output is schema-validated and shown as a proposal. Nothing is stored until a Business Analyst accepts it into a draft and saves. Inferred steps and findings are labelled; findings stay Draft until accepted or dismissed.  |
-| Traceable, versioned changes | Approved versions are frozen by triggers; changes create a new draft version. Every element has a lineage `element_key` and a human-readable ref code that survive versioning. Saves use optimistic locking; changes are audit-logged. |
+| Principle                    | How it is enforced                                                                                                                                                                                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Single source of truth       | One relational model in Postgres; `packages/domain` is the only definition of its TypeScript shape. React Flow only renders a projection of the domain graph.                                                                                                                                                                   |
+| Server-side authorisation    | RLS on every table. Process and data writes go through RPCs that check the caller's project role, called with the user's own JWT. Delivery writes go through the API's delivery service, which checks the role and workflow rules; users have no direct write access to those tables. The UI hides controls only for usability. |
+| Human-in-the-loop AI         | Claude's output is schema-validated and shown as a proposal. Nothing is stored until a Business Analyst accepts it into a draft and saves. Inferred steps and findings are labelled; findings stay Draft until accepted or dismissed.                                                                                           |
+| Traceable, versioned changes | Approved versions are frozen by triggers; changes create a new draft version. Every element has a lineage `element_key` and a human-readable ref code that survive versioning. Saves use optimistic locking; changes are audit-logged.                                                                                          |
 
 ## 2. Data model
 
@@ -95,20 +95,37 @@ business rules are project-level reference data with their own `revision` for op
 activity cannot be deleted (deprecate it), an approved business rule cannot be reworded or deleted (return it to draft,
 or retire it), and only Product Owners and Administrators approve business rules (enforced by trigger).
 
-### Planned tables (later phases)
+### Delivery (Phases 3 to 7)
 
-| Phase | Tables                                                                                                                                      |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| 3     | `stories` (functional/technical, versioned), `story_activities`, `story_fields`, `story_rules`, `story_dependencies`                        |
-| 4     | `sprints`, `sprint_items` (a story keeps its backlog record), `status_transitions`, `effort_logs`                                           |
-| 5–6   | `business_scenarios`, `scenario_steps`, `scenario_tech_stories`, `test_executions` (append-only), `step_results`, `defects`, `defect_links` |
+| Table                | Holds                                                                                                                                         |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stories`            | Functional (`US-`) and technical (`TS-`) stories: content, review status, design status, links, and backlog/work fields                       |
+| `sprints`            | Sprints (`SPR-`) with dates, capacity, team and status                                                                                        |
+| `sprint_items`       | Backlog items allocated to a sprint (planned hours, developer, planned dates, `committed`, `removed_at`). The story keeps its backlog record  |
+| `business_scenarios` | UAT scenarios (`BS-`) with preconditions, steps, linked technical stories, prerequisites and a content version                                |
+| `test_executions`    | UAT runs (`TE-`): a snapshot of the steps, per-step results, tester and outcome. Immutable once completed (trigger)                           |
+| `defects`            | Defects (`DEF-`) with severity, priority, status, the scenario/execution/step they came from, linked stories, sprint and screenshots          |
+| `delivery_events`    | Append-only history: review and Kanban status changes (previous value, new value, who, when), effort updates, assignments, flags and comments |
+| `ai_insights`        | Change-impact reviews and process improvement recommendations, with their accept/dismiss decisions                                            |
+| `delivery_settings`  | Per-project workflow rules: strict Kanban order, concurrent sprints, estimate before development, default capacity                            |
 
-Business-rule findings from process analysis are promoted into the `business_rules` register (once each, via
-`promote_finding_to_business_rule`), so a rule identified in a description is recorded in one place.
+Links between delivery records and the rest of the model (story ↔ activity, field, validation rule, business rule;
+technical ↔ functional story, many-to-many; dependencies; scenario ↔ technical stories; defect ↔ stories) are JSON
+arrays of ids on the owning record. The delivery service checks on every write that each id belongs to the same
+project and is of the right kind, and rejects dependency loops.
 
-**Traceability.** Each relationship gets its own typed link table so the database enforces integrity; a
-`trace_graph` view will union them into `(source_type, source_id, target_type, target_id)` rows, so "select an
-activity and see everything linked to it" becomes one recursive query.
+**Why delivery writes go through the API.** The delivery workflow has many rules (who may make which status change,
+which Kanban moves are allowed, when a scenario is ready, what a defect may move to). They are written once, in
+TypeScript, in `packages/domain/src/delivery/service.ts`, and unit-tested. The API runs them for signed-in users and
+then writes with the Supabase service role; signed-in users can read their projects' delivery rows (RLS) but have no
+write privileges on them, so the rules cannot be bypassed. The in-browser demo runs the same service code over browser
+storage. Triggers still guard what must never happen whoever writes: completed test executions and the history log
+cannot change, and an original estimate cannot be overwritten. A multi-record operation is not one database
+transaction; each write is checked with optimistic locking, and the demo rolls a failed operation back.
+
+**Traceability.** `traceActivity` (in `packages/domain/src/delivery/trace.ts`) walks from one activity to its fields,
+validation and business rules, functional and technical stories (with development status and sprint), test scenarios
+with their latest UAT result, and open defects.
 
 ## 3. Versioning and workflow rules
 
@@ -138,7 +155,48 @@ Error codes raised by database functions: `PF409` conflict, `PF422` invalid, `PF
 | Edit fields, rules, inputs & outputs; run AI suggestions |   ✓   |               |        ✓         |           |               |
 | Approve a business rule                                  |   ✓   |       ✓       |                  |           |               |
 
-The same matrix lives in `packages/domain/src/roles.ts` (UI) and in the RLS policies and RPC checks (enforcement).
+Delivery (Phases 3 to 7):
+
+| Action                                                          | Admin | Product Owner | Business Analyst | Developer | Business User |
+| --------------------------------------------------------------- | :---: | :-----------: | :--------------: | :-------: | :-----------: |
+| Write functional stories; write test scenarios                  |   ✓   |               |        ✓         |           |               |
+| Write technical stories                                         |   ✓   |               |        ✓         |     ✓     |               |
+| Confirm a proposed technical design                             |   ✓   |               |                  |     ✓     |               |
+| Approve stories and scenarios, prioritise backlog, plan sprints |   ✓   |       ✓       |                  |           |               |
+| Estimate, assign, move Kanban cards, update effort              |   ✓   |       ✓       |                  |     ✓     |               |
+| Run UAT, close or reopen a defect after retest                  |   ✓   |       ✓       |        ✓         |           |       ✓       |
+| Work on defects (assign, in progress, ready for retest)         |   ✓   |       ✓       |                  |     ✓     |               |
+| Change impact analysis and improvement recommendations          |   ✓   |       ✓       |        ✓         |           |               |
+| Delivery settings                                               |   ✓   |               |                  |           |               |
+| Raise a defect, comment                                         |   ✓   |       ✓       |        ✓         |     ✓     |       ✓       |
+
+The matrices live in `packages/domain/src/roles.ts` and `packages/domain/src/delivery/workflow.ts`. Phases 1 and 2 are
+enforced by RLS policies and RPC checks; delivery is enforced by the delivery service on the server.
+
+### Delivery workflow rules
+
+- **Stories:** Draft → Pending Review (needs a title, acceptance criteria, and for technical stories a confirmed design)
+  → Approved (Product Owner) → Added to Backlog. Only drafts can be edited; reopening an approved story increases its
+  version and is only possible before work starts and outside an open sprint.
+- **Kanban:** six columns, To-do → In Planning → In Development → Ready for Testing → In Testing → Completed. With the
+  strict setting, cards move forward one column at a time; moving back is always allowed. Development needs an active
+  sprint, an assignee and an estimate (configurable), no block, and completed dependencies. Completion sets the
+  completion date and zero remaining hours; the original estimate is kept.
+- **Sprints:** Planned → Active → Completed, or Cancelled. One active sprint per team unless concurrent sprints are
+  allowed. Items added before the start are the commitment; items added later are tracked separately.
+- **Scenarios:** Not Ready for Testing until approved, every linked technical story is Completed and prerequisites are
+  met; then Ready for UAT. The UAT status is the latest completed execution: a failed scenario stays failed until it is
+  retested, and nothing is marked passed automatically.
+- **Defects:** Open → Assigned → In Progress → Ready for Retest → Closed, or Reopened from Ready for Retest or Closed.
+  Testers verify (close or reopen after retest); a Product Owner or Administrator can close one that will not be fixed.
+
+### Metrics
+
+Computed only from stored records (`packages/domain/src/delivery/metrics.ts`): capacity and utilisation; velocity as
+two separate measures, story points and estimated hours, counting only committed stories completed within the sprint
+window (stories added mid-sprint are reported apart, and work completed after the sprint does not count); completion
+rate; burndown from recorded effort updates; WIP, average cycle time (development start to completion), ageing,
+blocked stories, developer workload, defect counts and the UAT pass rate.
 
 ## 5. Claude integration
 
@@ -161,6 +219,14 @@ Phase 2 adds two structured tasks on the same runner (`ClaudeStructuredRunner` i
 - `POST /api/rule-translation` `{ fieldId, text }`: turns plain-language validation logic into structured rules
   and, where the text states policy, business rules. Proposed business rules that repeat a register entry are
   flagged and left unticked. Everything is added as a draft for the analyst to confirm.
+
+Phases 3 to 7 add six tasks, each defined once in `packages/domain/src/delivery/ai.ts` as a prompt, a structured-output
+schema and a validator (which also checks every ref code the reply uses): functional story generation from an approved
+process, technical story generation from a functional story (designs are labelled Proposed; the only database objects
+presented as existing are the recorded physical columns), business scenario generation, story refinement, change-impact
+assessment and process improvement recommendations. They run through `POST /api/delivery/:op` on the same runner and
+are recorded in `ai_task_runs`. Every result is a proposal: accepted stories and scenarios start as drafts, change
+impact only flags items for review, and recommendations wait for an accept or dismiss.
 
 The prompts (in `packages/domain`, shared with the demo) instruct Claude to build the model only from the description, mark
 anything else as inferred, record gaps as questions, and treat the description as data rather than instructions.
@@ -199,6 +265,23 @@ docs/         This document and the setup guide
 
 ## 8. Delivered scope
 
+### Phases 3 to 7 (delivery)
+
+- **Tech User Story:** functional and technical stories with flows, acceptance criteria, technical design and links;
+  AI generation and refinement with review; submit, approve, add to backlog, reopen with versioning; history and
+  comments.
+- **Business User Story:** business scenarios (main, alternative, exception) generated from stories, shown greyed out
+  with the reasons until Ready for UAT.
+- **Product Backlog** (rank, priority, value, points, estimates, developer, sprint, filters), **Sprint Planning**
+  (capacity and utilisation with over-capacity warning, per-developer allocation, planned dates, dependency warnings,
+  start/complete/cancel) and **Development Kanban** (drag and drop between the six columns, card details, effort,
+  blocking, comments and status history).
+- **Business Testing:** step-by-step execution, defects raised from a failed step with the scenario, step, stories,
+  expected and actual results and screenshots; completed tests kept as history. **Defect Tracking:** the register and
+  lifecycle.
+- **Delivery Dashboard** (Recharts), **Requirement Insights** (consistency checks, change impact, improvement
+  recommendations), **Traceability**, **Users & Roles** (members and the permission matrix) and **Settings**.
+
 ### Phase 2 (data requirements)
 
 Input & Output Designer with three views: **Activities** (per process version: input and output fields with
@@ -215,12 +298,11 @@ React Flow map (start/end/activity/decision/approval/system nodes, yes/no branch
 connect and reconnect, delete, undo/redo, automatic layout, zoom and pan), properties panel, findings review,
 live validation, save and reopen with optimistic locking and crash recovery, approval and versioning.
 
-Not built yet by design: stories, backlog, sprints, testing, defects, analytics and organisation-wide user
-administration. They appear in the navigation as Coming Soon.
-
 ### Demo build
 
 `npm run build:demo --workspace @productflow/web` builds the whole app as one self-contained page that runs without a
 server: `src/lib/backend/demo.ts` implements the same backend interface in the browser (with the database's rules
-re-implemented and unit-tested) and calls Claude through the Claude artifact runtime. It is published as a shareable
-link for demonstrations; it is not a deployment target.
+re-implemented and unit-tested) and reaches Claude through the Claude artifact runtime when it is opened on claude.ai. Elsewhere it uses labelled sample
+responses, or the visitor's own Anthropic API key kept only for that browser tab. The same build is deployed to GitHub
+Pages by `.github/workflows/pages.yml`. It is for demonstrations; the production deployment is the web app, the API
+and Supabase.

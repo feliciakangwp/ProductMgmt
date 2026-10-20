@@ -2,10 +2,10 @@
 
 An AI-powered product management and delivery platform. Business Analysts describe business processes in plain
 language; Claude drafts an interactive process map that the analyst reviews, edits, validates and approves.
-Later phases build data requirements, user stories, delivery tracking and UAT on the same traceable model.
+Data requirements, user stories, delivery tracking, UAT and analytics are built on the same traceable model.
 
-**Status: Phase 1 (Process Design) and Phase 2 (Data Requirements)** are implemented. Other modules are visible in the
-navigation as Coming Soon.
+**Status: Phases 1 to 7 are implemented.** Try the demo (no account needed) on GitHub Pages once Pages is enabled for
+the repository, see [docs/SETUP.md](docs/SETUP.md#6-deploy-the-demo-to-github-pages).
 
 ## What Phase 1 does
 
@@ -33,6 +33,19 @@ navigation as Coming Soon.
   written by hand or translated by Claude from plain language and confirmed by the analyst
 - **Business rule register** with Product Owner approval, links to activities and validation rules, and import of the
   rules AI found in process descriptions
+
+## What Phases 3 to 7 do
+
+- **User stories:** Claude drafts functional stories from approved processes and technical stories from functional ones;
+  analysts and developers edit, link them to activities, fields and rules, and submit them for Product Owner approval.
+  AI technical designs are labelled Proposed until a developer confirms them. Only approved stories enter the backlog
+- **Backlog, sprints and Kanban:** prioritise and estimate, plan sprints against capacity, and move work through six
+  columns with tracked transitions, effort, blocking and comments
+- **UAT:** business scenarios become Ready for UAT once their technical stories are completed; testers run them step
+  by step and raise defects from failed steps with screenshots. Test history is never overwritten
+- **Defects, dashboard, insights:** the defect lifecycle; velocity (points and hours, separately), burndown, workload,
+  cycle time and UAT progress from stored data; consistency checks, AI change-impact analysis and improvement
+  recommendations; end-to-end traceability from an activity to its tests and defects
 
 ## Repository
 

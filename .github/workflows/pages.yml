@@ -1,0 +1,51 @@
+name: Deploy demo to GitHub Pages
+
+# Publishes the in-browser demo build (apps/web, `npm run build:demo`) as a
+# static site. The demo needs no server: data stays in each visitor's browser,
+# and AI features use labelled sample responses unless the visitor enters
+# their own Anthropic API key in Settings.
+#
+# One-time setup: Settings → Pages → Build and deployment → Source: GitHub Actions.
+
+on:
+  push:
+    branches: [main, claude/epic-pascal-7u3wpm]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm test --workspace @productflow/domain
+      - run: npm run build:demo --workspace @productflow/web
+      - name: Keep only the static site
+        run: rm apps/web/dist-demo/productflow-demo.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist-demo
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

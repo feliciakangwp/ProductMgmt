@@ -49,14 +49,15 @@ cp apps/web/.env.example apps/web/.env.local
 cp apps/api/.env.example apps/api/.env
 ```
 
-| File                  | Setting                                       | Value                                                                              |
-| --------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `apps/web/.env.local` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | From step 2                                                                        |
-| `apps/api/.env`       | `SUPABASE_URL`, `SUPABASE_ANON_KEY`           | Same values                                                                        |
-| `apps/api/.env`       | `ANTHROPIC_API_KEY`                           | Your Anthropic API key. Only the API server reads it; it never reaches the browser |
-| `apps/api/.env`       | `ANTHROPIC_MODEL`, `ANALYSIS_EFFORT`          | Optional; defaults `claude-opus-5-5` and `medium`                                  |
+| File                  | Setting                                       | Value                                                                                                   |
+| --------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `apps/web/.env.local` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | From step 2                                                                                             |
+| `apps/api/.env`       | `SUPABASE_URL`, `SUPABASE_ANON_KEY`           | Same values                                                                                             |
+| `apps/api/.env`       | `SUPABASE_SERVICE_ROLE_KEY`                   | From step 2. The API writes delivery records with it after checking the caller's role. Server-side only |
+| `apps/api/.env`       | `ANTHROPIC_API_KEY`                           | Your Anthropic API key. Only the API server reads it; it never reaches the browser                      |
+| `apps/api/.env`       | `ANTHROPIC_MODEL`, `ANALYSIS_EFFORT`          | Optional; defaults `claude-opus-5-5` and `medium`                                                       |
 
-The service-role key is not needed by either app.
+Never put the service-role key in the web app. Without it the API still runs, and the delivery modules report that they are not configured.
 
 ## 4. Run
 
@@ -85,7 +86,17 @@ set `PG_BIN` to override. The end-to-end tests run the real web app, API and dat
 place of the Anthropic API so they need no API key. If Playwright cannot find its browser, run
 `npx playwright install chromium` or set `CHROMIUM_PATH`.
 
+## 6. Deploy the demo to GitHub Pages
+
+`.github/workflows/pages.yml` builds the in-browser demo and publishes it with GitHub Pages on every push to `main`
+(and this project's working branch), or on demand from the Actions tab. One-time setup in the repository: **Settings →
+Pages → Build and deployment → Source: GitHub Actions**. If the deployment is rejected with a branch protection
+message, allow the branch under **Settings → Environments → github-pages → Deployment branches**, or deploy from
+`main`. Pages on a private repository needs a paid GitHub plan.
+
 ## Troubleshooting
+
+- **"Delivery features are not configured on this server":** set `SUPABASE_SERVICE_ROLE_KEY` in `apps/api/.env`.
 
 - **"Configuration needed" page:** `apps/web/.env.local` is missing or the dev server was not restarted.
 - **"Could not reach the ProductFlow API":** the API is not running or failed to start. Check its console for
