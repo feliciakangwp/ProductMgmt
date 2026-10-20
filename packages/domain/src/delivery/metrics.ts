@@ -120,7 +120,13 @@ export interface BurndownPoint {
  * from the effort updates recorded on each story. Before its first update a
  * story counts at its planned hours; once completed it counts as zero.
  */
-export function sprintBurndown(sprint: Sprint, items: SprintItem[], stories: Story[], events: DeliveryEvent[], now: string): BurndownPoint[] {
+export function sprintBurndown(
+  sprint: Sprint,
+  items: SprintItem[],
+  stories: Story[],
+  events: DeliveryEvent[],
+  now: string,
+): BurndownPoint[] {
   const byId = new Map(stories.map((s) => [s.id, s]));
   const committed = items.filter((i) => i.sprintId === sprint.id && i.committed);
   const effort = new Map<string, { at: number; value: number }[]>();
@@ -263,6 +269,8 @@ export function effortTotals(stories: Story[]): { estimated: number; original: n
     estimated: round1(sum(stories.map((s) => s.estimateHours ?? 0))),
     original: round1(sum(stories.map((s) => s.originalEstimateHours ?? 0))),
     actual: round1(sum(stories.map((s) => s.actualHours))),
-    remaining: round1(sum(stories.filter((s) => s.workStatus !== 'completed').map((s) => s.remainingHours ?? s.estimateHours ?? 0))),
+    remaining: round1(
+      sum(stories.filter((s) => s.workStatus !== 'completed').map((s) => s.remainingHours ?? s.estimateHours ?? 0)),
+    ),
   };
 }

@@ -161,7 +161,7 @@ describe('demo backend: delivery', () => {
     expect(snapshot.events.filter((e) => e.kind === 'work_status').length).toBeGreaterThan(10);
   });
 
-  it('applies the viewer\'s role and rolls back failed operations', async () => {
+  it("applies the viewer's role and rolls back failed operations", async () => {
     const { project } = await seeded();
     await backend.delivery.snapshot({ projectId: project.id });
     backend.demo!.setMyRole(project.id, 'business_user');

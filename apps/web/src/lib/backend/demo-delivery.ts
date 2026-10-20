@@ -61,7 +61,11 @@ export function createDemoDelivery(host: DemoDeliveryHost) {
   async function run(op: string, input: unknown, signal?: AbortSignal) {
     const before = structuredClone(host.tables());
     try {
-      const result = await runDeliveryOp(context(host.userId, browserAi, () => new Date().toISOString(), signal), op, input);
+      const result = await runDeliveryOp(
+        context(host.userId, browserAi, () => new Date().toISOString(), signal),
+        op,
+        input,
+      );
       host.commit();
       return result === undefined ? null : structuredClone(result);
     } catch (err) {
@@ -75,7 +79,10 @@ export function createDemoDelivery(host: DemoDeliveryHost) {
     get: (_target, op: string) => (input: unknown, signal?: AbortSignal) => run(op, input, signal),
   });
 
-  return { client, seed: (projectId: string, processId: string, users: SeedUsers) => seedDelivery(store, context, projectId, processId, users) };
+  return {
+    client,
+    seed: (projectId: string, processId: string, users: SeedUsers) => seedDelivery(store, context, projectId, processId, users),
+  };
 }
 
 interface SeedUsers {
@@ -102,8 +109,14 @@ async function seedDelivery(
   const today = Date.parse(`${isoDate(Date.now())}T09:00:00Z`);
   let clock = today - 24 * DAY;
   const ai = fixtureAiGateway();
-  const as = (userId: string) => <K extends DeliveryOpName>(op: K, input: DeliveryOpInput<K>) =>
-    runDeliveryOp(context(userId, ai, () => new Date(clock).toISOString()), op, input) as Promise<DeliveryOpResult<K>>;
+  const as =
+    (userId: string) =>
+    <K extends DeliveryOpName>(op: K, input: DeliveryOpInput<K>) =>
+      runDeliveryOp(
+        context(userId, ai, () => new Date(clock).toISOString()),
+        op,
+        input,
+      ) as Promise<DeliveryOpResult<K>>;
   const admin = as(users.admin);
   const po = as(users.productOwner);
   const dev = as(users.developer);
@@ -121,7 +134,11 @@ async function seedDelivery(
   };
   const plan = async (story: Story, priority: Story['priority'], value: number, points: number, hours: number) => {
     let s = await po('updateBacklog', { storyId: story.id, revision: story.revision, patch: { priority, businessValue: value } });
-    s = await dev('updateBacklog', { storyId: s.id, revision: s.revision, patch: { storyPoints: points, estimateHours: hours, assigneeId: users.developer } });
+    s = await dev('updateBacklog', {
+      storyId: s.id,
+      revision: s.revision,
+      patch: { storyPoints: points, estimateHours: hours, assigneeId: users.developer },
+    });
     return s;
   };
 
@@ -180,7 +197,12 @@ async function seedDelivery(
     at(startDay);
     let s = await advance(await reload(id), ['in_planning', 'in_development']);
     at(Math.round((startDay + endDay) / 2));
-    s = await dev('updateEffort', { storyId: s.id, revision: s.revision, remainingHours: remainingMid, actualHours: Math.round(actual / 2) });
+    s = await dev('updateEffort', {
+      storyId: s.id,
+      revision: s.revision,
+      remainingHours: remainingMid,
+      actualHours: Math.round(actual / 2),
+    });
     at(endDay);
     s = await dev('updateEffort', { storyId: s.id, revision: s.revision, actualHours: actual });
     return advance(s, ['ready_for_testing', 'in_testing', 'completed']);
@@ -206,24 +228,38 @@ async function seedDelivery(
     capacityHours: 50,
     team: 'Debt Management',
   });
-  for (const s of [backlog[2]!, technical[3] ?? backlog[3]!, backlog[0]!]) await po('addToSprint', { sprintId: s2.id, storyId: s.id });
+  for (const s of [backlog[2]!, technical[3] ?? backlog[3]!, backlog[0]!])
+    await po('addToSprint', { sprintId: s2.id, storyId: s.id });
   await po('setSprintStatus', { sprintId: s2.id, revision: s2.revision, status: 'active' });
   at(-6);
   if (technical[3]) await work(technical[3].id, -6, -3, 4, 9);
   at(-2);
   let blocked = await reload(backlog[0]!.id);
   blocked = await advance(blocked, ['in_planning', 'in_development']);
-  await dev('setBlocked', { storyId: blocked.id, revision: blocked.revision, blocked: true, reason: 'Waiting for read access to the debt ledger API' });
+  await dev('setBlocked', {
+    storyId: blocked.id,
+    revision: blocked.revision,
+    blocked: true,
+    reason: 'Waiting for read access to the debt ledger API',
+  });
 
   // UAT: scenarios for the first functional story, a failed run and its defect.
   at(-3);
   const scenarios = await admin('generateScenarios', { projectId, storyIds: [backlog[0]!.id] });
   const created = await admin('createScenarios', {
     projectId,
-    scenarios: scenarios.scenarios.map((content) => ({ content: { ...content, storyIds: [technical[0]!.id, technical[1]!.id] }, origin: 'inferred' as const })),
+    scenarios: scenarios.scenarios.map((content) => ({
+      content: { ...content, storyIds: [technical[0]!.id, technical[1]!.id] },
+      origin: 'inferred' as const,
+    })),
   });
   const main = await po('setScenarioStatus', { scenarioId: created[0]!.id, revision: created[0]!.revision, status: 'approved' });
-  const ready = await admin('setPrerequisites', { scenarioId: main.id, revision: main.revision, prerequisites: main.prerequisites, met: true });
+  const ready = await admin('setPrerequisites', {
+    scenarioId: main.id,
+    revision: main.revision,
+    prerequisites: main.prerequisites,
+    met: true,
+  });
   at(-2, 14);
   let run = await admin('startExecution', { scenarioId: ready.id });
   for (const [i, step] of run.steps.entries()) {
@@ -251,5 +287,10 @@ async function seedDelivery(
   });
   at(-1);
   defect = await dev('updateDefect', { defectId: defect.id, revision: defect.revision, patch: { assigneeId: users.developer } });
-  await dev('setDefectStatus', { defectId: defect.id, revision: defect.revision, status: 'in_progress', comment: 'Status update job is not triggered after save.' });
+  await dev('setDefectStatus', {
+    defectId: defect.id,
+    revision: defect.revision,
+    status: 'in_progress',
+    comment: 'Status update job is not triggered after save.',
+  });
 }

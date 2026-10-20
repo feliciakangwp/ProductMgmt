@@ -53,7 +53,13 @@ export function createDeliveryHarness(start = '2026-11-02T09:00:00.000Z') {
   let clock = Date.parse(start);
   let seq = 0;
   const counters: Record<string, number> = {};
-  const node = (versionId: string, key: string, ref: string, type: ProcessNodeRow['node_type'], label: string): ProcessNodeRow => ({
+  const node = (
+    versionId: string,
+    key: string,
+    ref: string,
+    type: ProcessNodeRow['node_type'],
+    label: string,
+  ): ProcessNodeRow => ({
     id: `${versionId}-${key}`,
     version_id: versionId,
     project_id: projectId,
@@ -96,7 +102,13 @@ export function createDeliveryHarness(start = '2026-11-02T09:00:00.000Z') {
     condition: '',
     branch,
   });
-  const use = (versionId: string, nodeKey: string, fieldId: string, direction: 'input' | 'output', mandatory: ActivityFieldRow['mandatory'] = 'yes'): ActivityFieldRow => ({
+  const use = (
+    versionId: string,
+    nodeKey: string,
+    fieldId: string,
+    direction: 'input' | 'output',
+    mandatory: ActivityFieldRow['mandatory'] = 'yes',
+  ): ActivityFieldRow => ({
     id: `${versionId}-${nodeKey}-${fieldId}`,
     version_id: versionId,
     project_id: projectId,
@@ -116,7 +128,18 @@ export function createDeliveryHarness(start = '2026-11-02T09:00:00.000Z') {
     projectId,
     projectKey: 'DMM',
     processes: [
-      { id: processId, project_id: projectId, ref_code: 'PRC-001', name: 'Debt write-off', process_type: 'to_be', owner: '', business_unit: '', created_by: USERS.ba, created_at: start, updated_at: start },
+      {
+        id: processId,
+        project_id: projectId,
+        ref_code: 'PRC-001',
+        name: 'Debt write-off',
+        process_type: 'to_be',
+        owner: '',
+        business_unit: '',
+        created_by: USERS.ba,
+        created_at: start,
+        updated_at: start,
+      },
     ],
     versions: [version(v1, 1, 'approved')],
     nodes: [
@@ -126,21 +149,95 @@ export function createDeliveryHarness(start = '2026-11-02T09:00:00.000Z') {
       node(v1, 'k-update', 'ACT-003', 'system', 'Update debt status'),
       node(v1, 'k-end', 'EVT-002', 'end', 'Debt written off'),
     ],
-    edges: [edge(v1, 'k-start', 'k-submit'), edge(v1, 'k-submit', 'k-review'), edge(v1, 'k-review', 'k-update', 'yes'), edge(v1, 'k-review', 'k-submit', 'no'), edge(v1, 'k-update', 'k-end')],
+    edges: [
+      edge(v1, 'k-start', 'k-submit'),
+      edge(v1, 'k-submit', 'k-review'),
+      edge(v1, 'k-review', 'k-update', 'yes'),
+      edge(v1, 'k-review', 'k-submit', 'no'),
+      edge(v1, 'k-update', 'k-end'),
+    ],
     actors: [{ id: 'actor-officer', name: 'Finance Officer' }],
-    activityFields: [use(v1, 'k-submit', 'f-debt', 'input'), use(v1, 'k-submit', 'f-amount', 'input'), use(v1, 'k-update', 'f-status', 'output')],
+    activityFields: [
+      use(v1, 'k-submit', 'f-debt', 'input'),
+      use(v1, 'k-submit', 'f-amount', 'input'),
+      use(v1, 'k-update', 'f-status', 'output'),
+    ],
     fields: [
-      { id: 'f-debt', refCode: 'FLD-001', name: 'Debt ID', description: '', dataType: 'reference', allowedValues: [], defaultValue: '', source: 'retrieved', sourceDetail: '', status: 'approved', origin: 'stated', revision: 1 },
-      { id: 'f-amount', refCode: 'FLD-002', name: 'Outstanding Amount', description: '', dataType: 'currency', allowedValues: [], defaultValue: '', source: 'retrieved', sourceDetail: '', status: 'approved', origin: 'stated', revision: 1 },
-      { id: 'f-status', refCode: 'FLD-003', name: 'Debt Status', description: '', dataType: 'enum', allowedValues: ['Open', 'Written Off'], defaultValue: '', source: 'system_generated', sourceDetail: '', status: 'approved', origin: 'stated', revision: 1 },
+      {
+        id: 'f-debt',
+        refCode: 'FLD-001',
+        name: 'Debt ID',
+        description: '',
+        dataType: 'reference',
+        allowedValues: [],
+        defaultValue: '',
+        source: 'retrieved',
+        sourceDetail: '',
+        status: 'approved',
+        origin: 'stated',
+        revision: 1,
+      },
+      {
+        id: 'f-amount',
+        refCode: 'FLD-002',
+        name: 'Outstanding Amount',
+        description: '',
+        dataType: 'currency',
+        allowedValues: [],
+        defaultValue: '',
+        source: 'retrieved',
+        sourceDetail: '',
+        status: 'approved',
+        origin: 'stated',
+        revision: 1,
+      },
+      {
+        id: 'f-status',
+        refCode: 'FLD-003',
+        name: 'Debt Status',
+        description: '',
+        dataType: 'enum',
+        allowedValues: ['Open', 'Written Off'],
+        defaultValue: '',
+        source: 'system_generated',
+        sourceDetail: '',
+        status: 'approved',
+        origin: 'stated',
+        revision: 1,
+      },
     ],
     validationRules: [
-      { id: 'vr-1', refCode: 'VR-001', fieldId: 'f-amount', ruleType: 'range', params: { ...EMPTY_RULE_PARAMS, min: 0, exclusive: true }, statement: 'Outstanding amount must be greater than zero.', errorMessage: '', sourceText: null, origin: 'manual', status: 'confirmed', businessRuleId: null },
+      {
+        id: 'vr-1',
+        refCode: 'VR-001',
+        fieldId: 'f-amount',
+        ruleType: 'range',
+        params: { ...EMPTY_RULE_PARAMS, min: 0, exclusive: true },
+        statement: 'Outstanding amount must be greater than zero.',
+        errorMessage: '',
+        sourceText: null,
+        origin: 'manual',
+        status: 'confirmed',
+        businessRuleId: null,
+      },
     ],
     businessRules: [
-      { id: 'br-1', refCode: 'BR-001', title: 'Director approval', statement: 'Write-off requests above $10,000 require Director approval during review.', category: 'approval', status: 'approved', origin: 'manual', sourceFinding: null, activities: [{ processId, nodeKey: 'k-review' }], revision: 1 },
+      {
+        id: 'br-1',
+        refCode: 'BR-001',
+        title: 'Director approval',
+        statement: 'Write-off requests above $10,000 require Director approval during review.',
+        category: 'approval',
+        status: 'approved',
+        origin: 'manual',
+        sourceFinding: null,
+        activities: [{ processId, nodeKey: 'k-review' }],
+        revision: 1,
+      },
     ],
-    columns: [{ id: 'col-1', systemName: 'Debt DB', tableName: 'debts', columnName: 'principal_cents', dataType: 'bigint', notes: '' }],
+    columns: [
+      { id: 'col-1', systemName: 'Debt DB', tableName: 'debts', columnName: 'principal_cents', dataType: 'bigint', notes: '' },
+    ],
     columnMappings: [{ fieldId: 'f-amount', columnId: 'col-1', transformation: '' }],
     members: Object.entries(ROLES).map(([userId, role]) => ({ userId, displayName: userId, role })),
   };
@@ -178,9 +275,15 @@ export function createDeliveryHarness(start = '2026-11-02T09:00:00.000Z') {
       const v2 = 'ver-2';
       context.versions.push(version(v2, 2, 'draft'));
       for (const n of context.nodes.filter((x) => x.version_id === v1)) {
-        context.nodes.push({ ...n, id: `${v2}-${n.element_key}`, version_id: v2, label: n.element_key === 'k-submit' ? 'Lodge write-off request' : n.label });
+        context.nodes.push({
+          ...n,
+          id: `${v2}-${n.element_key}`,
+          version_id: v2,
+          label: n.element_key === 'k-submit' ? 'Lodge write-off request' : n.label,
+        });
       }
-      for (const e of context.edges.filter((x) => x.version_id === v1)) context.edges.push({ ...e, id: `${v2}-${e.element_key}`, version_id: v2 });
+      for (const e of context.edges.filter((x) => x.version_id === v1))
+        context.edges.push({ ...e, id: `${v2}-${e.element_key}`, version_id: v2 });
       for (const f of context.activityFields.filter((x) => x.version_id === v1 && x.field_id !== 'f-amount')) {
         context.activityFields.push({ ...f, id: `${v2}-${f.element_key}`, version_id: v2 });
       }

@@ -128,12 +128,14 @@ export function checkWorkMove(story: Story, to: WorkStatus, role: ProjectRole | 
   const target = workIndex(to);
   if (from === target) return null;
   if (target < from) return null; // moving back is always allowed
-  if (story.blocked) return `${story.refCode} is blocked${story.blockedReason ? `: ${story.blockedReason}` : ''}. Unblock it first`;
+  if (story.blocked)
+    return `${story.refCode} is blocked${story.blockedReason ? `: ${story.blockedReason}` : ''}. Unblock it first`;
   if (ctx.settings.strictWorkflow && target > from + 1) {
     return `Move ${story.refCode} one column at a time: next is ${WORK_STATUS_LABELS[WORK_STATUSES[from + 1]!]}`;
   }
   if (target >= workIndex('in_development')) {
-    if (!ctx.sprint || ctx.sprint.status !== 'active') return `${story.refCode} must be in an active sprint before development starts`;
+    if (!ctx.sprint || ctx.sprint.status !== 'active')
+      return `${story.refCode} must be in an active sprint before development starts`;
     if (ctx.settings.requireEstimateForDevelopment && (!story.assigneeId || story.estimateHours === null)) {
       return `Assign ${story.refCode} to a developer and estimate it before development starts`;
     }
@@ -230,7 +232,11 @@ export const UAT_STATUS_LABELS: Record<UatStatus, string> = {
  * later execution replaces it, so a failed scenario stays failed until it is
  * retested; it is never marked passed automatically.
  */
-export function scenarioUatStatus(scenario: BusinessScenario, executions: TestExecution[], readiness: ScenarioReadiness): UatStatus {
+export function scenarioUatStatus(
+  scenario: BusinessScenario,
+  executions: TestExecution[],
+  readiness: ScenarioReadiness,
+): UatStatus {
   const runs = executions.filter((e) => e.scenarioId === scenario.id).sort(newestExecutionFirst);
   if (runs[0]?.status === 'in_progress') return 'in_progress';
   const lastCompleted = runs.find((r) => r.status !== 'in_progress');
@@ -239,10 +245,13 @@ export function scenarioUatStatus(scenario: BusinessScenario, executions: TestEx
 }
 
 /** The result of a finished execution, or the reason it cannot be completed yet. */
-export function executionOutcome(results: StepExecution[]): { status: Exclude<ExecutionStatus, 'in_progress'> } | { error: string } {
+export function executionOutcome(
+  results: StepExecution[],
+): { status: Exclude<ExecutionStatus, 'in_progress'> } | { error: string } {
   if (results.some((r) => r.status === 'fail')) return { status: 'failed' };
   if (results.some((r) => r.status === 'blocked')) return { status: 'blocked' };
-  if (results.some((r) => r.status === 'not_tested')) return { error: 'Record a result for every step before completing the test' };
+  if (results.some((r) => r.status === 'not_tested'))
+    return { error: 'Record a result for every step before completing the test' };
   return { status: 'passed' };
 }
 
@@ -277,7 +286,10 @@ export function checkDefectStatusChange(
   if ((to === 'assigned' || to === 'in_progress') && !defect.assigneeId) return `Assign ${defect.refCode} to someone first`;
   const verifying = to === 'reopened' || (to === 'closed' && defect.status === 'ready_for_retest');
   if (verifying) return canDeliver(role, 'verifyDefect') ? null : 'Only testers can close or reopen a defect after retesting';
-  if (to === 'closed') return canDeliver(role, 'manageBacklog') ? null : 'Only a Product Owner or Administrator can close a defect before it is retested';
+  if (to === 'closed')
+    return canDeliver(role, 'manageBacklog')
+      ? null
+      : 'Only a Product Owner or Administrator can close a defect before it is retested';
   return canDeliver(role, 'workDefect') ? null : 'Only Developers, Product Owners and Administrators can work on defects';
 }
 

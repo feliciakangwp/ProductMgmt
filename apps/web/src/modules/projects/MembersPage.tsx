@@ -1,5 +1,5 @@
-import { PROJECT_ROLE_LABELS, PROJECT_ROLES, can, type ProjectRole } from '@productflow/domain';
-import { ArrowLeft, Trash2, UserPlus } from 'lucide-react';
+import { DELIVERY_ROLES, PERMISSIONS, PROJECT_ROLE_LABELS, PROJECT_ROLES, can, type ProjectRole } from '@productflow/domain';
+import { ArrowLeft, Check, Trash2, UserPlus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router';
 import { useAuth } from '../../auth/AuthProvider';
@@ -8,11 +8,11 @@ import { errorMessage } from '../../lib/errors';
 import { useAddMember, useMembers, useProject, useRemoveMember, useUpdateMemberRole } from './api';
 
 const ROLE_DESCRIPTIONS: Record<ProjectRole, string> = {
-  admin: 'Manages the project and its members.',
-  product_owner: 'Approves process versions and prioritises work.',
-  business_analyst: 'Describes processes, runs AI analysis and edits process maps.',
-  developer: 'Reviews requirements (read-only in Phase 1).',
-  business_user: 'Views requirements (read-only in Phase 1).',
+  admin: 'Manages the project, its members and settings; can do everything below.',
+  product_owner: 'Approves processes, rules, stories and scenarios; prioritises the backlog and plans sprints.',
+  business_analyst: 'Describes processes, defines data, writes stories and test scenarios, runs AI analysis.',
+  developer: 'Writes and confirms technical stories, estimates, works the Kanban board and fixes defects.',
+  business_user: 'Runs UAT, raises defects and verifies fixes.',
 };
 
 export function MembersPage() {
@@ -150,6 +150,67 @@ export function MembersPage() {
           </table>
         </div>
       ) : null}
+      <PermissionMatrix />
     </div>
+  );
+}
+
+const MATRIX: { label: string; roles: readonly ProjectRole[] }[] = [
+  { label: 'Manage members and settings', roles: PERMISSIONS.manageMembers },
+  { label: 'Edit processes and run process analysis', roles: PERMISSIONS.editProcess },
+  { label: 'Approve process versions and business rules', roles: PERMISSIONS.approveProcess },
+  { label: 'Define data requirements', roles: PERMISSIONS.editData },
+  { label: 'Write functional stories', roles: DELIVERY_ROLES.editFunctional },
+  { label: 'Write and confirm technical stories', roles: DELIVERY_ROLES.editTechnical },
+  { label: 'Approve stories, prioritise backlog, plan sprints', roles: DELIVERY_ROLES.manageBacklog },
+  { label: 'Estimate, move Kanban cards, update effort', roles: DELIVERY_ROLES.updateWork },
+  { label: 'Write test scenarios', roles: DELIVERY_ROLES.editScenarios },
+  { label: 'Approve test scenarios', roles: DELIVERY_ROLES.approveScenario },
+  { label: 'Run UAT, verify defect fixes', roles: DELIVERY_ROLES.executeTests },
+  { label: 'Work on defects', roles: DELIVERY_ROLES.workDefect },
+  { label: 'Run change impact and improvement analysis', roles: DELIVERY_ROLES.runInsights },
+];
+
+/** What each role may do. The server enforces the same rules on every request. */
+function PermissionMatrix() {
+  return (
+    <section className="mt-8">
+      <h2 className="mb-2 text-sm font-semibold text-slate-900">Role permissions</h2>
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+        <table className="w-full text-xs">
+          <thead className="bg-slate-50 text-left text-slate-500">
+            <tr>
+              <th className="px-3 py-2">Permission</th>
+              {PROJECT_ROLES.map((r) => (
+                <th key={r} className="px-2 py-2 text-center">
+                  {PROJECT_ROLE_LABELS[r]}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {MATRIX.map((row) => (
+              <tr key={row.label}>
+                <td className="px-3 py-1.5 text-slate-700">{row.label}</td>
+                {PROJECT_ROLES.map((r) => (
+                  <td key={r} className="px-2 py-1.5 text-center">
+                    {row.roles.includes(r) ? (
+                      <Check className="mx-auto size-4 text-emerald-600" aria-label="Allowed" />
+                    ) : (
+                      <span className="text-slate-300" aria-label="Not allowed">
+                        –
+                      </span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        Every member can read the project and comment. Testers who raised a defect can also edit its details.
+      </p>
+    </section>
   );
 }

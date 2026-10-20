@@ -282,7 +282,11 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     const repo = await requireUser(request);
     const store = deps.deliveryStore;
     if (!store) {
-      throw new AppError(503, 'delivery_unavailable', 'Delivery features are not configured on this server (SUPABASE_SERVICE_ROLE_KEY).');
+      throw new AppError(
+        503,
+        'delivery_unavailable',
+        'Delivery features are not configured on this server (SUPABASE_SERVICE_ROLE_KEY).',
+      );
     }
     const result = await runDeliveryOp(
       {

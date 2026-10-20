@@ -86,10 +86,8 @@ async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): P
 /** Production backend: Supabase (with row level security) plus the ProductFlow API. */
 export function createBackend(): Backend {
   const delivery = new Proxy({} as DeliveryClient, {
-    get:
-      (_target, op: string) =>
-      async (input: unknown, signal?: AbortSignal) =>
-        (await postJson<{ result: unknown }>(`/api/delivery/${op}`, input, signal)).result,
+    get: (_target, op: string) => async (input: unknown, signal?: AbortSignal) =>
+      (await postJson<{ result: unknown }>(`/api/delivery/${op}`, input, signal)).result,
   });
 
   return {

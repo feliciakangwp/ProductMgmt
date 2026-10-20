@@ -78,7 +78,11 @@ describe('stories', () => {
   it('generates functional stories from approved activities and keeps them as proposals', async () => {
     const h = createDeliveryHarness();
     const proposal = await client(h, USERS.ba)('generateStories', { projectId: h.projectId, processId: h.processId });
-    expect(proposal.stories.map((s) => s.content.title)).toEqual(['Submit write-off request', 'Review write-off request', 'Update debt status']);
+    expect(proposal.stories.map((s) => s.content.title)).toEqual([
+      'Submit write-off request',
+      'Review write-off request',
+      'Update debt status',
+    ]);
     const submit = proposal.stories[0]!;
     expect(submit.content.activities).toEqual([{ processId: h.processId, nodeKey: 'k-submit' }]);
     expect(submit.content.fieldIds).toEqual(['f-debt', 'f-amount']);
@@ -100,12 +104,27 @@ describe('stories', () => {
     const input = {
       processName: 'P',
       processDescription: '',
-      activities: [{ id: 'A1', refCode: null, type: 'activity', label: 'Do', description: '', actor: null, inputs: [], outputs: [] }],
+      activities: [
+        { id: 'A1', refCode: null, type: 'activity', label: 'Do', description: '', actor: null, inputs: [], outputs: [] },
+      ],
       fields: [],
       businessRules: [],
       existingStories: [],
     };
-    const story = { title: 'T', activityIds: ['A9'], userRole: '', objective: '', benefit: '', description: '', behaviour: [], alternativeFlows: [], acceptanceCriteria: [], fieldRefs: ['FLD-404'], businessRuleRefs: [], origin: 'stated' };
+    const story = {
+      title: 'T',
+      activityIds: ['A9'],
+      userRole: '',
+      objective: '',
+      benefit: '',
+      description: '',
+      behaviour: [],
+      alternativeFlows: [],
+      acceptanceCriteria: [],
+      fieldRefs: ['FLD-404'],
+      businessRuleRefs: [],
+      origin: 'stated',
+    };
     const result = STORY_GENERATION_TASK.parse(JSON.stringify({ stories: [story], questions: [] }), input);
     expect(result.ok).toBe(false);
     expect(!result.ok && result.errors.join(' ')).toMatch(/A9.*FLD-404/);
@@ -115,16 +134,35 @@ describe('stories', () => {
     const h = createDeliveryHarness();
     const ba = client(h, USERS.ba);
     const po = client(h, USERS.po);
-    await rejects(client(h, USERS.dev)('createStory', { projectId: h.projectId, storyType: 'functional', content: { title: 'X' } }), '42501');
+    await rejects(
+      client(h, USERS.dev)('createStory', { projectId: h.projectId, storyType: 'functional', content: { title: 'X' } }),
+      '42501',
+    );
     await rejects(client(h, USERS.outsider)('snapshot', { projectId: h.projectId }), 'P0002');
     await rejects(
-      ba('createStory', { projectId: h.projectId, storyType: 'functional', content: { title: 'X', activities: [{ processId: h.processId, nodeKey: 'nope' }] } }),
+      ba('createStory', {
+        projectId: h.projectId,
+        storyType: 'functional',
+        content: { title: 'X', activities: [{ processId: h.processId, nodeKey: 'nope' }] },
+      }),
       'PF422',
     );
 
-    let story = await ba('createStory', { projectId: h.projectId, storyType: 'functional', content: { title: 'Submit', objective: 'to submit' } });
-    await rejects(ba('setStoryStatus', { storyId: story.id, revision: 1, status: 'pending_review' }), 'PF422', /acceptance criterion/);
-    story = await ba('updateStory', { storyId: story.id, revision: 1, content: { acceptanceCriteria: criteria('Given…, when…, then…', '  ') } });
+    let story = await ba('createStory', {
+      projectId: h.projectId,
+      storyType: 'functional',
+      content: { title: 'Submit', objective: 'to submit' },
+    });
+    await rejects(
+      ba('setStoryStatus', { storyId: story.id, revision: 1, status: 'pending_review' }),
+      'PF422',
+      /acceptance criterion/,
+    );
+    story = await ba('updateStory', {
+      storyId: story.id,
+      revision: 1,
+      content: { acceptanceCriteria: criteria('Given…, when…, then…', '  ') },
+    });
     expect(story.acceptanceCriteria).toHaveLength(1);
     await rejects(ba('updateStory', { storyId: story.id, revision: 1, content: { title: 'Stale' } }), 'PF409');
 
@@ -135,9 +173,16 @@ describe('stories', () => {
     await rejects(ba('updateStory', { storyId: story.id, revision: story.revision, content: { title: 'Changed' } }), 'PF423');
     story = await po('setStoryStatus', { storyId: story.id, revision: story.revision, status: 'in_backlog' });
 
-    story = await ba('setStoryStatus', { storyId: story.id, revision: story.revision, status: 'draft', comment: 'Policy changed' });
+    story = await ba('setStoryStatus', {
+      storyId: story.id,
+      revision: story.revision,
+      status: 'draft',
+      comment: 'Policy changed',
+    });
     expect(story.version).toBe(2);
-    const history = h.tables.events.filter((e) => e.entityId === story.id && e.kind === 'status').map((e) => `${e.fromValue}>${e.toValue}`);
+    const history = h.tables.events
+      .filter((e) => e.entityId === story.id && e.kind === 'status')
+      .map((e) => `${e.fromValue}>${e.toValue}`);
     expect(history).toEqual(['draft>pending_review', 'pending_review>approved', 'approved>in_backlog', 'in_backlog>draft']);
   });
 
@@ -145,7 +190,10 @@ describe('stories', () => {
     const h = createDeliveryHarness();
     const functional = await backlogStory(h);
     const proposal = await client(h, USERS.dev)('generateTechnicalStories', { storyId: functional.id });
-    expect(proposal.stories.map((s) => s.content.title)).toEqual(['API: Submit a write-off request', 'Validation: Submit a write-off request']);
+    expect(proposal.stories.map((s) => s.content.title)).toEqual([
+      'API: Submit a write-off request',
+      'Validation: Submit a write-off request',
+    ]);
     expect(proposal.stories[0]!.content.validationRuleIds).toEqual(['vr-1']);
     expect(proposal.stories[0]!.content.notes).toMatch(/Assumptions to confirm/);
 
@@ -155,9 +203,21 @@ describe('stories', () => {
     });
     expect(tech!.designStatus).toBe('proposed');
     expect(tech!.implementsIds).toEqual([functional.id]);
-    await rejects(client(h, USERS.dev)('setStoryStatus', { storyId: tech!.id, revision: 1, status: 'pending_review' }), 'PF422', /confirm the proposed technical design/);
-    await rejects(client(h, USERS.ba)('updateStory', { storyId: tech!.id, revision: 1, content: {}, designStatus: 'confirmed' }), '42501');
-    const confirmed = await client(h, USERS.dev)('updateStory', { storyId: tech!.id, revision: 1, content: {}, designStatus: 'confirmed' });
+    await rejects(
+      client(h, USERS.dev)('setStoryStatus', { storyId: tech!.id, revision: 1, status: 'pending_review' }),
+      'PF422',
+      /confirm the proposed technical design/,
+    );
+    await rejects(
+      client(h, USERS.ba)('updateStory', { storyId: tech!.id, revision: 1, content: {}, designStatus: 'confirmed' }),
+      '42501',
+    );
+    const confirmed = await client(h, USERS.dev)('updateStory', {
+      storyId: tech!.id,
+      revision: 1,
+      content: {},
+      designStatus: 'confirmed',
+    });
     expect(confirmed.designStatus).toBe('confirmed');
     await client(h, USERS.dev)('setStoryStatus', { storyId: tech!.id, revision: confirmed.revision, status: 'pending_review' });
   });
@@ -166,8 +226,16 @@ describe('stories', () => {
     const h = createDeliveryHarness();
     const ba = client(h, USERS.ba);
     const a = await ba('createStory', { projectId: h.projectId, storyType: 'functional', content: { title: 'A' } });
-    const b = await ba('createStory', { projectId: h.projectId, storyType: 'functional', content: { title: 'B', dependsOnIds: [a.id] } });
-    await rejects(ba('updateStory', { storyId: a.id, revision: a.revision, content: { dependsOnIds: [b.id] } }), 'PF422', /loop: US-001 → US-002/);
+    const b = await ba('createStory', {
+      projectId: h.projectId,
+      storyType: 'functional',
+      content: { title: 'B', dependsOnIds: [a.id] },
+    });
+    await rejects(
+      ba('updateStory', { storyId: a.id, revision: a.revision, content: { dependsOnIds: [b.id] } }),
+      'PF422',
+      /loop: US-001 → US-002/,
+    );
   });
 });
 
@@ -175,21 +243,62 @@ describe('backlog, sprints and the Kanban board', () => {
   it('preserves the original estimate and limits planning to the right roles', async () => {
     const h = createDeliveryHarness();
     let story = await backlogStory(h);
-    await rejects(client(h, USERS.dev)('updateBacklog', { storyId: story.id, revision: story.revision, patch: { priority: 'high' } }), '42501');
-    story = await client(h, USERS.po)('updateBacklog', { storyId: story.id, revision: story.revision, patch: { priority: 'critical', businessValue: 8 } });
-    story = await client(h, USERS.dev)('updateBacklog', { storyId: story.id, revision: story.revision, patch: { estimateHours: 16, storyPoints: 5 } });
+    await rejects(
+      client(h, USERS.dev)('updateBacklog', { storyId: story.id, revision: story.revision, patch: { priority: 'high' } }),
+      '42501',
+    );
+    story = await client(h, USERS.po)('updateBacklog', {
+      storyId: story.id,
+      revision: story.revision,
+      patch: { priority: 'critical', businessValue: 8 },
+    });
+    story = await client(h, USERS.dev)('updateBacklog', {
+      storyId: story.id,
+      revision: story.revision,
+      patch: { estimateHours: 16, storyPoints: 5 },
+    });
     expect([story.originalEstimateHours, story.estimateHours, story.remainingHours]).toEqual([16, 16, 16]);
-    story = await client(h, USERS.dev)('updateBacklog', { storyId: story.id, revision: story.revision, patch: { estimateHours: 24 } });
+    story = await client(h, USERS.dev)('updateBacklog', {
+      storyId: story.id,
+      revision: story.revision,
+      patch: { estimateHours: 24 },
+    });
     expect([story.originalEstimateHours, story.estimateHours]).toEqual([16, 24]);
-    await rejects(client(h, USERS.po)('updateBacklog', { storyId: story.id, revision: story.revision, patch: { assigneeId: USERS.outsider } }), 'PF422');
+    await rejects(
+      client(h, USERS.po)('updateBacklog', {
+        storyId: story.id,
+        revision: story.revision,
+        patch: { assigneeId: USERS.outsider },
+      }),
+      'PF422',
+    );
   });
 
   it('plans a sprint, warns over capacity, and enforces one active sprint per team', async () => {
     const h = createDeliveryHarness();
     const po = client(h, USERS.po);
     const story = await backlogStory(h);
-    const sprint = await po('createSprint', { projectId: h.projectId, name: 'Sprint 1', objective: 'Write-off MVP', startDate: '2026-11-02', endDate: '2026-11-13', capacityHours: 10, team: 'Core' });
-    await rejects(client(h, USERS.dev)('createSprint', { projectId: h.projectId, name: 'S', objective: '', startDate: '2026-11-02', endDate: '2026-11-13', capacityHours: 10, team: '' }), '42501');
+    const sprint = await po('createSprint', {
+      projectId: h.projectId,
+      name: 'Sprint 1',
+      objective: 'Write-off MVP',
+      startDate: '2026-11-02',
+      endDate: '2026-11-13',
+      capacityHours: 10,
+      team: 'Core',
+    });
+    await rejects(
+      client(h, USERS.dev)('createSprint', {
+        projectId: h.projectId,
+        name: 'S',
+        objective: '',
+        startDate: '2026-11-02',
+        endDate: '2026-11-13',
+        capacityHours: 10,
+        team: '',
+      }),
+      '42501',
+    );
     const item = await po('addToSprint', { sprintId: sprint.id, storyId: story.id, plannedHours: 16, assigneeId: USERS.dev });
     expect(item.committed).toBe(true);
     await rejects(po('addToSprint', { sprintId: sprint.id, storyId: story.id }), 'PF409');
@@ -197,10 +306,22 @@ describe('backlog, sprints and the Kanban board', () => {
     expect(capacity).toMatchObject({ allocatedHours: 16, remainingHours: -6, utilisation: 160, overCapacity: true });
     expect(h.tables.stories[0]!.status).toBe('in_backlog'); // the backlog record stays
 
-    const second = await po('createSprint', { projectId: h.projectId, name: 'Sprint 2', objective: '', startDate: '2026-11-16', endDate: '2026-11-27', capacityHours: 40, team: 'core' });
+    const second = await po('createSprint', {
+      projectId: h.projectId,
+      name: 'Sprint 2',
+      objective: '',
+      startDate: '2026-11-16',
+      endDate: '2026-11-27',
+      capacityHours: 40,
+      team: 'core',
+    });
     await po('setSprintStatus', { sprintId: sprint.id, revision: 1, status: 'active' });
     await rejects(po('setSprintStatus', { sprintId: second.id, revision: 1, status: 'active' }), 'PF422', /already active/);
-    const settings = await client(h, USERS.admin)('updateSettings', { projectId: h.projectId, revision: 0, patch: { allowConcurrentSprints: true } });
+    const settings = await client(h, USERS.admin)('updateSettings', {
+      projectId: h.projectId,
+      revision: 0,
+      patch: { allowConcurrentSprints: true },
+    });
     expect(settings.allowConcurrentSprints).toBe(true);
     await po('setSprintStatus', { sprintId: second.id, revision: 1, status: 'active' });
   });
@@ -210,16 +331,48 @@ describe('backlog, sprints and the Kanban board', () => {
     const po = client(h, USERS.po);
     const dev = client(h, USERS.dev);
     let story = await backlogStory(h);
-    await rejects(dev('moveStory', { storyId: story.id, revision: story.revision, to: 'in_development' }), 'PF422', /one column at a time/);
+    await rejects(
+      dev('moveStory', { storyId: story.id, revision: story.revision, to: 'in_development' }),
+      'PF422',
+      /one column at a time/,
+    );
     story = await dev('moveStory', { storyId: story.id, revision: story.revision, to: 'in_planning' });
-    await rejects(dev('moveStory', { storyId: story.id, revision: story.revision, to: 'in_development' }), 'PF422', /active sprint/);
-    const sprint = await po('createSprint', { projectId: h.projectId, name: 'Sprint 1', objective: '', startDate: '2026-11-02', endDate: '2026-11-13', capacityHours: 40, team: '' });
+    await rejects(
+      dev('moveStory', { storyId: story.id, revision: story.revision, to: 'in_development' }),
+      'PF422',
+      /active sprint/,
+    );
+    const sprint = await po('createSprint', {
+      projectId: h.projectId,
+      name: 'Sprint 1',
+      objective: '',
+      startDate: '2026-11-02',
+      endDate: '2026-11-13',
+      capacityHours: 40,
+      team: '',
+    });
     await po('addToSprint', { sprintId: sprint.id, storyId: story.id, plannedHours: 8 });
     await po('setSprintStatus', { sprintId: sprint.id, revision: 1, status: 'active' });
-    await rejects(dev('moveStory', { storyId: story.id, revision: story.revision, to: 'in_development' }), 'PF422', /Assign .* and estimate/);
-    story = await dev('updateBacklog', { storyId: story.id, revision: story.revision, patch: { assigneeId: USERS.dev, estimateHours: 8, storyPoints: 3 } });
-    await rejects(client(h, USERS.bu)('moveStory', { storyId: story.id, revision: story.revision, to: 'in_development' }), '42501');
-    story = await dev('setBlocked', { storyId: story.id, revision: story.revision, blocked: true, reason: 'Waiting for API access' });
+    await rejects(
+      dev('moveStory', { storyId: story.id, revision: story.revision, to: 'in_development' }),
+      'PF422',
+      /Assign .* and estimate/,
+    );
+    story = await dev('updateBacklog', {
+      storyId: story.id,
+      revision: story.revision,
+      patch: { assigneeId: USERS.dev, estimateHours: 8, storyPoints: 3 },
+    });
+    await rejects(
+      client(h, USERS.bu)('moveStory', { storyId: story.id, revision: story.revision, to: 'in_development' }),
+      '42501',
+    );
+    story = await dev('setBlocked', {
+      storyId: story.id,
+      revision: story.revision,
+      blocked: true,
+      reason: 'Waiting for API access',
+    });
     await rejects(dev('moveStory', { storyId: story.id, revision: story.revision, to: 'in_development' }), 'PF422', /blocked/);
     story = await dev('setBlocked', { storyId: story.id, revision: story.revision, blocked: false });
 
@@ -231,7 +384,13 @@ describe('backlog, sprints and the Kanban board', () => {
     expect(story.completedAt).not.toBeNull();
     expect(story.remainingHours).toBe(0);
     const moves = h.tables.events.filter((e) => e.entityId === story.id && e.kind === 'work_status');
-    expect(moves.map((e) => e.toValue)).toEqual(['in_planning', 'in_development', 'ready_for_testing', 'in_testing', 'completed']);
+    expect(moves.map((e) => e.toValue)).toEqual([
+      'in_planning',
+      'in_development',
+      'ready_for_testing',
+      'in_testing',
+      'completed',
+    ]);
     expect(moves.every((e) => e.actorId === USERS.dev && e.createdAt)).toBe(true);
     // Moving back is allowed and clears the completion date.
     story = await dev('moveStory', { storyId: story.id, revision: story.revision, to: 'in_testing' });
@@ -242,10 +401,22 @@ describe('backlog, sprints and the Kanban board', () => {
     const h = createDeliveryHarness('2026-11-02T08:00:00.000Z');
     const po = client(h, USERS.po);
     const dev = client(h, USERS.dev);
-    const sprint = await po('createSprint', { projectId: h.projectId, name: 'Sprint 1', objective: '', startDate: '2026-11-02', endDate: '2026-11-06', capacityHours: 40, team: '' });
+    const sprint = await po('createSprint', {
+      projectId: h.projectId,
+      name: 'Sprint 1',
+      objective: '',
+      startDate: '2026-11-02',
+      endDate: '2026-11-06',
+      capacityHours: 40,
+      team: '',
+    });
     const ready = async (title: string, points: number, hours: number) => {
       const s = await backlogStory(h, title);
-      return dev('updateBacklog', { storyId: s.id, revision: s.revision, patch: { assigneeId: USERS.dev, estimateHours: hours, storyPoints: points } });
+      return dev('updateBacklog', {
+        storyId: s.id,
+        revision: s.revision,
+        patch: { assigneeId: USERS.dev, estimateHours: hours, storyPoints: points },
+      });
     };
     const a = await ready('Committed and done', 5, 10);
     const b = await ready('Committed, not done', 3, 6);
@@ -270,12 +441,21 @@ describe('backlog, sprints and the Kanban board', () => {
     await dev('updateEffort', { storyId: a2.id, revision: a2.revision, remainingHours: 4, actualHours: 6 });
     const aRow = h.tables.stories.find((s) => s.id === a.id)!;
     let aDone = aRow;
-    for (const to of ['ready_for_testing', 'in_testing', 'completed'] as const) aDone = await dev('moveStory', { storyId: aDone.id, revision: aDone.revision, to });
+    for (const to of ['ready_for_testing', 'in_testing', 'completed'] as const)
+      aDone = await dev('moveStory', { storyId: aDone.id, revision: aDone.revision, to });
     await finish(h.tables.stories.find((s) => s.id === c.id)!);
     started = await po('setSprintStatus', { sprintId: sprint.id, revision: started.revision, status: 'completed' });
     h.advance(72);
     // Completed later, in the next sprint: it does not count toward Sprint 1.
-    const next = await po('createSprint', { projectId: h.projectId, name: 'Sprint 2', objective: '', startDate: '2026-11-09', endDate: '2026-11-13', capacityHours: 40, team: '' });
+    const next = await po('createSprint', {
+      projectId: h.projectId,
+      name: 'Sprint 2',
+      objective: '',
+      startDate: '2026-11-09',
+      endDate: '2026-11-13',
+      capacityHours: 40,
+      team: '',
+    });
     await po('addToSprint', { sprintId: next.id, storyId: b.id });
     await po('setSprintStatus', { sprintId: next.id, revision: 1, status: 'active' });
     await finish(h.tables.stories.find((s) => s.id === b.id)!);
@@ -310,13 +490,27 @@ describe('business scenarios, UAT and defects', () => {
     let tech = await backlogTechStory(h, functional.id);
     const proposal = await client(h, USERS.ba)('generateScenarios', { projectId: h.projectId, storyIds: [functional.id] });
     expect(proposal.scenarios[0]!.storyIds).toEqual([tech.id]);
-    const [scenario] = await client(h, USERS.ba)('createScenarios', { projectId: h.projectId, scenarios: [{ content: proposal.scenarios[0]!, origin: 'inferred' }] });
+    const [scenario] = await client(h, USERS.ba)('createScenarios', {
+      projectId: h.projectId,
+      scenarios: [{ content: proposal.scenarios[0]!, origin: 'inferred' }],
+    });
     let sc = await po('setScenarioStatus', { scenarioId: scenario!.id, revision: 1, status: 'approved' });
     const byId = () => new Map(h.tables.stories.map((s) => [s.id, s]));
-    expect(scenarioReadiness(sc, byId()).reasons).toEqual(['TS-001 is To-do, not Completed', 'Prerequisites are not confirmed as met']);
+    expect(scenarioReadiness(sc, byId()).reasons).toEqual([
+      'TS-001 is To-do, not Completed',
+      'Prerequisites are not confirmed as met',
+    ]);
     await rejects(client(h, USERS.bu)('startExecution', { scenarioId: sc.id }), 'PF422', /not ready for testing/);
 
-    const sprint = await po('createSprint', { projectId: h.projectId, name: 'Sprint 1', objective: '', startDate: '2026-11-02', endDate: '2026-11-13', capacityHours: 40, team: '' });
+    const sprint = await po('createSprint', {
+      projectId: h.projectId,
+      name: 'Sprint 1',
+      objective: '',
+      startDate: '2026-11-02',
+      endDate: '2026-11-13',
+      capacityHours: 40,
+      team: '',
+    });
     await po('addToSprint', { sprintId: sprint.id, storyId: tech.id, plannedHours: 8, assigneeId: USERS.dev });
     await po('setSprintStatus', { sprintId: sprint.id, revision: 1, status: 'active' });
     tech = h.tables.stories.find((s) => s.id === tech.id)!;
@@ -324,7 +518,12 @@ describe('business scenarios, UAT and defects', () => {
     for (const to of ['in_planning', 'in_development', 'ready_for_testing', 'in_testing', 'completed'] as const) {
       tech = await dev('moveStory', { storyId: tech.id, revision: tech.revision, to });
     }
-    sc = await client(h, USERS.bu)('setPrerequisites', { scenarioId: sc.id, revision: sc.revision, prerequisites: sc.prerequisites, met: true });
+    sc = await client(h, USERS.bu)('setPrerequisites', {
+      scenarioId: sc.id,
+      revision: sc.revision,
+      prerequisites: sc.prerequisites,
+      met: true,
+    });
     expect(scenarioReadiness(sc, byId()).ready).toBe(true);
     return { sc, tech, functional, sprint };
   }
@@ -338,23 +537,87 @@ describe('business scenarios, UAT and defects', () => {
     await rejects(bu('startExecution', { scenarioId: sc.id }), 'PF409');
     const [first, ...rest] = run.steps;
     await rejects(bu('completeExecution', { executionId: run.id, revision: run.revision }), 'PF422', /every step/);
-    await rejects(bu('recordStepResult', { executionId: run.id, revision: run.revision, stepId: first!.id, status: 'fail', testData: '', actualResult: '', remarks: '' }), 'PF422');
-    run = await bu('recordStepResult', { executionId: run.id, revision: run.revision, stepId: first!.id, status: 'fail', testData: 'TR-1001', actualResult: 'Error 500 shown', remarks: 'Happens every time' });
+    await rejects(
+      bu('recordStepResult', {
+        executionId: run.id,
+        revision: run.revision,
+        stepId: first!.id,
+        status: 'fail',
+        testData: '',
+        actualResult: '',
+        remarks: '',
+      }),
+      'PF422',
+    );
+    run = await bu('recordStepResult', {
+      executionId: run.id,
+      revision: run.revision,
+      stepId: first!.id,
+      status: 'fail',
+      testData: 'TR-1001',
+      actualResult: 'Error 500 shown',
+      remarks: 'Happens every time',
+    });
     for (const step of rest) {
-      run = await bu('recordStepResult', { executionId: run.id, revision: run.revision, stepId: step.id, status: 'pass', testData: '', actualResult: 'As expected', remarks: '' });
+      run = await bu('recordStepResult', {
+        executionId: run.id,
+        revision: run.revision,
+        stepId: step.id,
+        status: 'pass',
+        testData: '',
+        actualResult: 'As expected',
+        remarks: '',
+      });
     }
     run = await bu('completeExecution', { executionId: run.id, revision: run.revision, remarks: 'One failure' });
     expect(run.status).toBe('failed');
-    await rejects(bu('recordStepResult', { executionId: run.id, revision: run.revision, stepId: first!.id, status: 'pass', testData: '', actualResult: '', remarks: '' }), 'PF423');
+    await rejects(
+      bu('recordStepResult', {
+        executionId: run.id,
+        revision: run.revision,
+        stepId: first!.id,
+        status: 'pass',
+        testData: '',
+        actualResult: '',
+        remarks: '',
+      }),
+      'PF423',
+    );
 
-    await rejects(bu('createDefect', { projectId: h.projectId, title: 'X', severity: 'major', executionId: run.id, stepId: rest[0]!.id }), 'PF422', /failed steps/);
-    let defect = await bu('createDefect', { projectId: h.projectId, title: 'Submit fails', severity: 'major', executionId: run.id, stepId: first!.id });
-    expect(defect).toMatchObject({ refCode: 'DEF-001', scenarioId: sc.id, stepId: first!.id, storyIds: [tech.id], actualResult: 'Error 500 shown', remarks: 'Happens every time', expectedResult: first!.expectedResult, status: 'open' });
+    await rejects(
+      bu('createDefect', { projectId: h.projectId, title: 'X', severity: 'major', executionId: run.id, stepId: rest[0]!.id }),
+      'PF422',
+      /failed steps/,
+    );
+    let defect = await bu('createDefect', {
+      projectId: h.projectId,
+      title: 'Submit fails',
+      severity: 'major',
+      executionId: run.id,
+      stepId: first!.id,
+    });
+    expect(defect).toMatchObject({
+      refCode: 'DEF-001',
+      scenarioId: sc.id,
+      stepId: first!.id,
+      storyIds: [tech.id],
+      actualResult: 'Error 500 shown',
+      remarks: 'Happens every time',
+      expectedResult: first!.expectedResult,
+      status: 'open',
+    });
 
     // Defect workflow
     const dev = client(h, USERS.dev);
-    await rejects(dev('setDefectStatus', { defectId: defect.id, revision: defect.revision, status: 'in_progress' }), 'PF422', /Assign/);
-    await rejects(bu('updateDefect', { defectId: defect.id, revision: defect.revision, patch: { assigneeId: USERS.dev } }), '42501');
+    await rejects(
+      dev('setDefectStatus', { defectId: defect.id, revision: defect.revision, status: 'in_progress' }),
+      'PF422',
+      /Assign/,
+    );
+    await rejects(
+      bu('updateDefect', { defectId: defect.id, revision: defect.revision, patch: { assigneeId: USERS.dev } }),
+      '42501',
+    );
     defect = await dev('updateDefect', { defectId: defect.id, revision: defect.revision, patch: { assigneeId: USERS.dev } });
     expect(defect.status).toBe('assigned');
     await rejects(bu('setDefectStatus', { defectId: defect.id, revision: defect.revision, status: 'in_progress' }), '42501');
@@ -367,7 +630,15 @@ describe('business scenarios, UAT and defects', () => {
     expect(status().failed).toBe(1);
     let retest = await bu('startExecution', { scenarioId: sc.id });
     for (const step of retest.steps) {
-      retest = await bu('recordStepResult', { executionId: retest.id, revision: retest.revision, stepId: step.id, status: 'pass', testData: '', actualResult: 'As expected', remarks: '' });
+      retest = await bu('recordStepResult', {
+        executionId: retest.id,
+        revision: retest.revision,
+        stepId: step.id,
+        status: 'pass',
+        testData: '',
+        actualResult: 'As expected',
+        remarks: '',
+      });
     }
     retest = await bu('completeExecution', { executionId: retest.id, revision: retest.revision });
     defect = await bu('setDefectStatus', { defectId: defect.id, revision: defect.revision, status: 'closed' });
@@ -383,8 +654,25 @@ describe('business scenarios, UAT and defects', () => {
   it('rejects oversized or non-image screenshots', async () => {
     const h = createDeliveryHarness();
     const big = `data:image/png;base64,${'A'.repeat(545 * 1024)}`;
-    await rejects(client(h, USERS.bu)('createDefect', { projectId: h.projectId, title: 'X', severity: 'minor', attachments: [{ id: 'a', name: 'x.png', dataUrl: big }] }), 'PF422', /KB or smaller/);
-    await rejects(client(h, USERS.bu)('createDefect', { projectId: h.projectId, title: 'X', severity: 'minor', attachments: [{ id: 'a', name: 'x.svg', dataUrl: 'data:image/svg+xml;base64,AAAA' }] }), 'PF422');
+    await rejects(
+      client(h, USERS.bu)('createDefect', {
+        projectId: h.projectId,
+        title: 'X',
+        severity: 'minor',
+        attachments: [{ id: 'a', name: 'x.png', dataUrl: big }],
+      }),
+      'PF422',
+      /KB or smaller/,
+    );
+    await rejects(
+      client(h, USERS.bu)('createDefect', {
+        projectId: h.projectId,
+        title: 'X',
+        severity: 'minor',
+        attachments: [{ id: 'a', name: 'x.svg', dataUrl: 'data:image/svg+xml;base64,AAAA' }],
+      }),
+      'PF422',
+    );
   });
 });
 
@@ -432,7 +720,13 @@ describe('traceability and advanced AI', () => {
       projectId: h.projectId,
       processId: h.processId,
       summary: result.assessment!.summary,
-      items: result.impact.items.map((i) => ({ id: i.id, type: i.type, refCode: i.refCode, reason: i.reasons[0]!, impact: 'high' })),
+      items: result.impact.items.map((i) => ({
+        id: i.id,
+        type: i.type,
+        refCode: i.refCode,
+        reason: i.reasons[0]!,
+        impact: 'high',
+      })),
     });
     const after = h.tables.stories.find((s) => s.id === functional.id)!;
     expect(after.reviewFlag).toMatch(/Linked to/);

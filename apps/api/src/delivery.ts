@@ -105,32 +105,51 @@ export function createServiceClient(url: string, serviceRoleKey: string): Supaba
 export function createSupabaseDeliveryStore(db: SupabaseClient): ApiDeliveryStore {
   return {
     async memberRole(projectId, userId) {
-      const { data, error } = await db.from('project_members').select('role').eq('project_id', projectId).eq('user_id', userId).maybeSingle();
+      const { data, error } = await db
+        .from('project_members')
+        .select('role')
+        .eq('project_id', projectId)
+        .eq('user_id', userId)
+        .maybeSingle();
       if (error) dbError(error);
       return (data?.role as ProjectRole | undefined) ?? null;
     },
 
     async context(projectId): Promise<ProjectContext> {
       const byProject = (table: string) => rows<Record<string, unknown>>(db.from(table).select('*').eq('project_id', projectId));
-      const [project, processes, versions, nodes, edges, actors, activityFields, fields, validationRules, businessRules, ruleLinks, columns, mappings, members] =
-        await Promise.all([
-          db.from('projects').select('key').eq('id', projectId).single(),
-          byProject('processes'),
-          byProject('process_versions'),
-          byProject('process_nodes'),
-          byProject('process_edges'),
-          byProject('actors'),
-          byProject('activity_fields'),
-          byProject('field_definitions'),
-          byProject('validation_rules'),
-          byProject('business_rules'),
-          byProject('business_rule_activities'),
-          byProject('physical_columns'),
-          byProject('field_column_mappings'),
-          rows<{ user_id: string; role: ProjectRole; profiles: { display_name: string } | { display_name: string }[] | null }>(
-            db.from('project_members').select('user_id, role, profiles(display_name)').eq('project_id', projectId),
-          ),
-        ]);
+      const [
+        project,
+        processes,
+        versions,
+        nodes,
+        edges,
+        actors,
+        activityFields,
+        fields,
+        validationRules,
+        businessRules,
+        ruleLinks,
+        columns,
+        mappings,
+        members,
+      ] = await Promise.all([
+        db.from('projects').select('key').eq('id', projectId).single(),
+        byProject('processes'),
+        byProject('process_versions'),
+        byProject('process_nodes'),
+        byProject('process_edges'),
+        byProject('actors'),
+        byProject('activity_fields'),
+        byProject('field_definitions'),
+        byProject('validation_rules'),
+        byProject('business_rules'),
+        byProject('business_rule_activities'),
+        byProject('physical_columns'),
+        byProject('field_column_mappings'),
+        rows<{ user_id: string; role: ProjectRole; profiles: { display_name: string } | { display_name: string }[] | null }>(
+          db.from('project_members').select('user_id, role, profiles(display_name)').eq('project_id', projectId),
+        ),
+      ]);
       if (project.error) dbError(project.error);
       return {
         projectId,
@@ -143,7 +162,9 @@ export function createSupabaseDeliveryStore(db: SupabaseClient): ApiDeliveryStor
         activityFields: activityFields as unknown as ActivityFieldRow[],
         fields: (fields as unknown as FieldDefinitionRow[]).map(fieldFromRow),
         validationRules: (validationRules as unknown as ValidationRuleRow[]).map(ruleFromRow),
-        businessRules: (businessRules as unknown as BusinessRuleRow[]).map((r) => businessRuleFromRow(r, ruleLinks as unknown as BusinessRuleActivityRow[])),
+        businessRules: (businessRules as unknown as BusinessRuleRow[]).map((r) =>
+          businessRuleFromRow(r, ruleLinks as unknown as BusinessRuleActivityRow[]),
+        ),
         columns: (columns as unknown as PhysicalColumnRow[]).map(columnFromRow),
         columnMappings: (mappings as { field_id: string; column_id: string; transformation: string }[]).map((m) => ({
           fieldId: m.field_id,
@@ -159,7 +180,11 @@ export function createSupabaseDeliveryStore(db: SupabaseClient): ApiDeliveryStor
 
     async list(kind, projectId) {
       const data = await rows<Record<string, unknown>>(
-        db.from(TABLES[kind]).select('*').eq('project_id', projectId).order(ORDER[kind] ?? 'id'),
+        db
+          .from(TABLES[kind])
+          .select('*')
+          .eq('project_id', projectId)
+          .order(ORDER[kind] ?? 'id'),
       );
       return data.map((r) => fromColumns(r));
     },
@@ -213,7 +238,12 @@ export function createSupabaseDeliveryStore(db: SupabaseClient): ApiDeliveryStor
         return true;
       }
       const data = await rows(
-        db.from('delivery_settings').update(toColumns(settings)).eq('project_id', settings.projectId).eq('revision', expectedRevision).select('project_id'),
+        db
+          .from('delivery_settings')
+          .update(toColumns(settings))
+          .eq('project_id', settings.projectId)
+          .eq('revision', expectedRevision)
+          .select('project_id'),
       );
       return data.length === 1;
     },
@@ -243,7 +273,11 @@ export function createSupabaseDeliveryStore(db: SupabaseClient): ApiDeliveryStor
 }
 
 /** Runs delivery AI tasks on Claude through the structured runner, recording every run. */
-export function createAiGateway(runner: StructuredRunner, record: (run: AiRunRecord) => Promise<string>, userId: string): AiGateway {
+export function createAiGateway(
+  runner: StructuredRunner,
+  record: (run: AiRunRecord) => Promise<string>,
+  userId: string,
+): AiGateway {
   return {
     async run(task, input, meta) {
       const user = task.user(input);

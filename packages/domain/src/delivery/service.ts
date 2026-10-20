@@ -11,7 +11,15 @@ import {
   type ChangeImpactAssessment,
   type Refinement,
 } from './ai';
-import { activityIndex, activityKey, analyseChangeImpact, approvedVersion, currentVersion, type ChangeImpact, type ProjectContext } from './trace';
+import {
+  activityIndex,
+  activityKey,
+  analyseChangeImpact,
+  approvedVersion,
+  currentVersion,
+  type ChangeImpact,
+  type ProjectContext,
+} from './trace';
 import {
   DEFAULT_DELIVERY_SETTINGS,
   DEFECT_SEVERITIES,
@@ -125,7 +133,12 @@ export interface AiRunResult<O> {
 
 /** Runs an AI task and records the run. Throws DomainError with an `ai_*` code when it fails. */
 export interface AiGateway {
-  run<I, O>(task: AiTaskDefinition<I, O>, input: I, meta: { projectId: string; subjectId: string }, signal?: AbortSignal): Promise<AiRunResult<O>>;
+  run<I, O>(
+    task: AiTaskDefinition<I, O>,
+    input: I,
+    meta: { projectId: string; subjectId: string },
+    signal?: AbortSignal,
+  ): Promise<AiRunResult<O>>;
 }
 
 export interface OpContext {
@@ -207,7 +220,11 @@ const NewScenarioSchema = z.strictObject({
   origin: z.enum(['stated', 'inferred', 'manual']).default('manual'),
 });
 
-const AttachmentSchema = z.strictObject({ id: Id, name: ShortText, dataUrl: z.string().max(Math.ceil(MAX_ATTACHMENT_BYTES * 1.4)) });
+const AttachmentSchema = z.strictObject({
+  id: Id,
+  name: ShortText,
+  dataUrl: z.string().max(Math.ceil(MAX_ATTACHMENT_BYTES * 1.4)),
+});
 
 const DefectFieldsSchema = z.strictObject({
   title: ShortText,
@@ -325,7 +342,8 @@ async function loadSnapshot(ctx: OpContext, projectId: string): Promise<Delivery
 const nonEmptyItems = (items: { id: string; text: string }[]) =>
   items.map((i) => ({ id: i.id, text: i.text.trim() })).filter((i) => i.text);
 
-const toItems = (ctx: OpContext, texts: string[]) => texts.map((text) => ({ id: ctx.newId(), text: text.trim() })).filter((i) => i.text);
+const toItems = (ctx: OpContext, texts: string[]) =>
+  texts.map((text) => ({ id: ctx.newId(), text: text.trim() })).filter((i) => i.text);
 
 async function checkMember(ctx: OpContext, projectId: string, userId: string | null | undefined) {
   if (userId && !(await ctx.store.memberRole(projectId, userId))) fail('The assignee is not a member of this project', 'PF422');
@@ -343,7 +361,8 @@ async function checkStoryLinks(ctx: OpContext, story: Story, stories: Story[], c
   const brIds = new Set(context.businessRules.map((r) => r.id));
   if (story.businessRuleIds.some((id) => !brIds.has(id))) bad('a business rule');
   const byId = new Map(stories.map((s) => [s.id, s]));
-  if (story.implementsIds.length && story.storyType !== 'technical') fail('Only technical stories implement other stories', 'PF422');
+  if (story.implementsIds.length && story.storyType !== 'technical')
+    fail('Only technical stories implement other stories', 'PF422');
   if (story.implementsIds.some((id) => byId.get(id)?.storyType !== 'functional')) bad('a functional story');
   if (story.dependsOnIds.some((id) => !byId.has(id))) bad('a story');
   if (story.dependsOnIds.includes(story.id)) fail('A story cannot depend on itself', 'PF422');
@@ -368,12 +387,20 @@ function normaliseContent(content: Partial<StoryContent>): Partial<StoryContent>
   return out;
 }
 
-async function newStory(ctx: OpContext, projectId: string, input: z.output<typeof NewStorySchema>, stories: Story[], context: ProjectContext): Promise<Story> {
+async function newStory(
+  ctx: OpContext,
+  projectId: string,
+  input: z.output<typeof NewStorySchema>,
+  stories: Story[],
+  context: ProjectContext,
+): Promise<Story> {
   const t = ctx.now();
   const content = { ...EMPTY_STORY_CONTENT, ...normaliseContent(input.content) };
   if (!content.title) fail('Give the story a title', 'PF422');
   const designStatus =
-    input.storyType === 'functional' ? 'confirmed' : (input.designStatus ?? (input.origin === 'manual' ? 'confirmed' : 'proposed'));
+    input.storyType === 'functional'
+      ? 'confirmed'
+      : (input.designStatus ?? (input.origin === 'manual' ? 'confirmed' : 'proposed'));
   const story: Story = {
     ...content,
     id: ctx.newId(),
@@ -407,7 +434,9 @@ async function newStory(ctx: OpContext, projectId: string, input: z.output<typeo
   await checkStoryLinks(ctx, story, stories, context);
   story.refCode = await ctx.store.nextRef(projectId, input.storyType === 'functional' ? 'US' : 'TS');
   await ctx.store.insert('stories', story);
-  await recordEvent(ctx, projectId, 'story', story.id, 'created', { body: input.origin === 'manual' ? '' : 'Accepted from an AI proposal' });
+  await recordEvent(ctx, projectId, 'story', story.id, 'created', {
+    body: input.origin === 'manual' ? '' : 'Accepted from an AI proposal',
+  });
   return story;
 }
 
@@ -426,16 +455,19 @@ async function checkScenarioLinks(ctx: OpContext, projectId: string, content: Sc
   if (!content.title) fail('Give the scenario a title', 'PF422');
   const stories = await ctx.store.list('stories', projectId);
   const technical = new Set(stories.filter((s) => s.storyType === 'technical').map((s) => s.id));
-  if (content.storyIds.some((id) => !technical.has(id))) fail('A scenario can only be linked to technical stories in this project', 'PF422');
+  if (content.storyIds.some((id) => !technical.has(id)))
+    fail('A scenario can only be linked to technical stories in this project', 'PF422');
   const context = await ctx.store.context(projectId);
-  if (content.processId && !context.processes.some((p) => p.id === content.processId)) fail('That process is not in this project', 'PF422');
+  if (content.processId && !context.processes.some((p) => p.id === content.processId))
+    fail('That process is not in this project', 'PF422');
   const index = activityIndex(context);
   if (content.activities.some((a) => !index.has(activityKey(a)))) fail('A linked activity is not in this project', 'PF422');
 }
 
 function checkAttachments(attachments: { dataUrl: string }[]) {
   for (const a of attachments) {
-    if (!/^data:image\/(png|jpeg|gif|webp);base64,/.test(a.dataUrl)) fail('Attachments must be PNG, JPEG, GIF or WebP images', 'PF422');
+    if (!/^data:image\/(png|jpeg|gif|webp);base64,/.test(a.dataUrl))
+      fail('Attachments must be PNG, JPEG, GIF or WebP images', 'PF422');
     if (Math.floor(((a.dataUrl.length - a.dataUrl.indexOf(',') - 1) * 3) / 4) > MAX_ATTACHMENT_BYTES) {
       fail(`Each screenshot must be ${Math.round(MAX_ATTACHMENT_BYTES / 1024)} KB or smaller`, 'PF422');
     }
@@ -444,7 +476,9 @@ function checkAttachments(attachments: { dataUrl: string }[]) {
 
 /** The open (planned or active) sprint a story is allocated to, if any. */
 async function openSprintOf(ctx: OpContext, story: Story): Promise<{ item: SprintItem; sprint: Sprint } | null> {
-  const items = (await ctx.store.list('sprintItems', story.projectId)).filter((i) => i.storyId === story.id && i.removedAt === null);
+  const items = (await ctx.store.list('sprintItems', story.projectId)).filter(
+    (i) => i.storyId === story.id && i.removedAt === null,
+  );
   const sprints = await ctx.store.list('sprints', story.projectId);
   for (const status of ['active', 'planned'] as const) {
     for (const item of items) {
@@ -463,7 +497,10 @@ interface Op<S extends z.ZodType, R> {
   input: S;
   run(ctx: OpContext, input: z.output<S>): Promise<R>;
 }
-const op = <S extends z.ZodType, R>(input: S, run: (ctx: OpContext, input: z.output<S>) => Promise<R>): Op<S, R> => ({ input, run });
+const op = <S extends z.ZodType, R>(input: S, run: (ctx: OpContext, input: z.output<S>) => Promise<R>): Op<S, R> => ({
+  input,
+  run,
+});
 
 export interface StoryProposal {
   runId: string;
@@ -523,7 +560,8 @@ export const DELIVERY_OPS = {
       await requirePermission(ctx, projectId, 'manageSettings', 'Only project administrators can change delivery settings');
       const current = await settingsFor(ctx, projectId);
       const next = { ...current, ...patch, revision: revision + 1 };
-      if (!(await ctx.store.saveSettings(next, revision))) fail('Settings were changed by someone else. Reload and try again.', 'PF409');
+      if (!(await ctx.store.saveSettings(next, revision)))
+        fail('Settings were changed by someone else. Reload and try again.', 'PF409');
       return next;
     },
   ),
@@ -533,35 +571,55 @@ export const DELIVERY_OPS = {
   createStory: op(NewStorySchema.extend({ projectId: Id }), async (ctx, input) => {
     const role = await roleIn(ctx, input.projectId);
     if (!canEditStory(role, input)) fail(`You do not have permission to write ${input.storyType} stories`, '42501');
-    const [stories, context] = await Promise.all([ctx.store.list('stories', input.projectId), ctx.store.context(input.projectId)]);
+    const [stories, context] = await Promise.all([
+      ctx.store.list('stories', input.projectId),
+      ctx.store.context(input.projectId),
+    ]);
     return newStory(ctx, input.projectId, input, stories, context);
   }),
 
   createStories: op(z.strictObject({ projectId: Id, stories: z.array(NewStorySchema).min(1).max(50) }), async (ctx, input) => {
     const role = await roleIn(ctx, input.projectId);
-    for (const s of input.stories) if (!canEditStory(role, s)) fail(`You do not have permission to write ${s.storyType} stories`, '42501');
-    const [stories, context] = await Promise.all([ctx.store.list('stories', input.projectId), ctx.store.context(input.projectId)]);
+    for (const s of input.stories)
+      if (!canEditStory(role, s)) fail(`You do not have permission to write ${s.storyType} stories`, '42501');
+    const [stories, context] = await Promise.all([
+      ctx.store.list('stories', input.projectId),
+      ctx.store.context(input.projectId),
+    ]);
     const created: Story[] = [];
     for (const s of input.stories) created.push(await newStory(ctx, input.projectId, s, [...stories, ...created], context));
     return created;
   }),
 
   updateStory: op(
-    z.strictObject({ storyId: Id, revision: z.number().int(), content: StoryContentSchema.partial(), designStatus: z.enum(DESIGN_STATUSES).optional() }),
+    z.strictObject({
+      storyId: Id,
+      revision: z.number().int(),
+      content: StoryContentSchema.partial(),
+      designStatus: z.enum(DESIGN_STATUSES).optional(),
+    }),
     async (ctx, { storyId, revision, content, designStatus }) => {
       const story = await load(ctx, 'stories', storyId);
       const role = await roleIn(ctx, story.projectId);
       if (!canEditStory(role, story)) fail('You do not have permission to edit this story', '42501');
       checkRevision(story, revision);
-      if (story.status !== 'draft') fail(`${story.refCode} is ${story.status.replace('_', ' ')}. Return it to draft before changing it.`, 'PF423');
+      if (story.status !== 'draft')
+        fail(`${story.refCode} is ${story.status.replace('_', ' ')}. Return it to draft before changing it.`, 'PF423');
       if (designStatus && designStatus !== story.designStatus && story.storyType === 'technical') {
         if (designStatus === 'confirmed' && role !== 'developer' && role !== 'admin') {
           fail('Only a Developer or Administrator can confirm a technical design', '42501');
         }
       }
-      const next: Story = { ...story, ...normaliseContent(content), designStatus: story.storyType === 'technical' ? (designStatus ?? story.designStatus) : 'confirmed' };
+      const next: Story = {
+        ...story,
+        ...normaliseContent(content),
+        designStatus: story.storyType === 'technical' ? (designStatus ?? story.designStatus) : 'confirmed',
+      };
       if (!next.title) fail('Give the story a title', 'PF422');
-      const [stories, context] = await Promise.all([ctx.store.list('stories', story.projectId), ctx.store.context(story.projectId)]);
+      const [stories, context] = await Promise.all([
+        ctx.store.list('stories', story.projectId),
+        ctx.store.context(story.projectId),
+      ]);
       await checkStoryLinks(ctx, next, stories, context);
       const saved = await save(ctx, 'stories', next, revision);
       if (designStatus === 'confirmed' && story.designStatus === 'proposed') {
@@ -572,7 +630,12 @@ export const DELIVERY_OPS = {
   ),
 
   setStoryStatus: op(
-    z.strictObject({ storyId: Id, revision: z.number().int(), status: z.enum(STORY_STATUSES), comment: z.string().max(2000).default('') }),
+    z.strictObject({
+      storyId: Id,
+      revision: z.number().int(),
+      status: z.enum(STORY_STATUSES),
+      comment: z.string().max(2000).default(''),
+    }),
     async (ctx, { storyId, revision, status, comment }) => {
       const story = await load(ctx, 'stories', storyId);
       const role = await roleIn(ctx, story.projectId);
@@ -588,7 +651,11 @@ export const DELIVERY_OPS = {
       }
       if (status === 'draft' && (story.status === 'approved' || story.status === 'in_backlog')) next.version = story.version + 1;
       const saved = await save(ctx, 'stories', next, revision);
-      await recordEvent(ctx, story.projectId, 'story', story.id, 'status', { from: story.status, to: status, body: comment.trim() });
+      await recordEvent(ctx, story.projectId, 'story', story.id, 'status', {
+        from: story.status,
+        to: status,
+        body: comment.trim(),
+      });
       return saved;
     },
   ),
@@ -600,9 +667,11 @@ export const DELIVERY_OPS = {
     if (story.status !== 'draft') fail(`${story.refCode} has been submitted. Only draft stories can be deleted.`, 'PF423');
     const stories = await ctx.store.list('stories', story.projectId);
     const users = stories.filter((s) => s.implementsIds.includes(storyId) || s.dependsOnIds.includes(storyId));
-    if (users.length) fail(`${story.refCode} is linked from ${users.map((s) => s.refCode).join(', ')}. Remove those links first.`, 'PF423');
+    if (users.length)
+      fail(`${story.refCode} is linked from ${users.map((s) => s.refCode).join(', ')}. Remove those links first.`, 'PF423');
     const scenarios = (await ctx.store.list('scenarios', story.projectId)).filter((s) => s.storyIds.includes(storyId));
-    if (scenarios.length) fail(`${story.refCode} is tested by ${scenarios.map((s) => s.refCode).join(', ')}. Remove those links first.`, 'PF423');
+    if (scenarios.length)
+      fail(`${story.refCode} is tested by ${scenarios.map((s) => s.refCode).join(', ')}. Remove those links first.`, 'PF423');
     await ctx.store.remove('stories', storyId);
   }),
 
@@ -625,10 +694,13 @@ export const DELIVERY_OPS = {
       const role = await roleIn(ctx, story.projectId);
       checkRevision(story, revision);
       const planning = patch.priority !== undefined || patch.businessValue !== undefined;
-      if (planning && !canDeliver(role, 'manageBacklog')) fail('Only a Product Owner or Administrator can prioritise the backlog', '42501');
+      if (planning && !canDeliver(role, 'manageBacklog'))
+        fail('Only a Product Owner or Administrator can prioritise the backlog', '42501');
       const estimating = patch.storyPoints !== undefined || patch.estimateHours !== undefined || patch.assigneeId !== undefined;
-      if (estimating && !canDeliver(role, 'updateWork')) fail('Only Developers, Product Owners and Administrators can estimate or assign stories', '42501');
-      if (story.status !== 'approved' && story.status !== 'in_backlog') fail(`${story.refCode} must be approved before it is planned`, 'PF423');
+      if (estimating && !canDeliver(role, 'updateWork'))
+        fail('Only Developers, Product Owners and Administrators can estimate or assign stories', '42501');
+      if (story.status !== 'approved' && story.status !== 'in_backlog')
+        fail(`${story.refCode} must be approved before it is planned`, 'PF423');
       await checkMember(ctx, story.projectId, patch.assigneeId);
       const next: Story = { ...story, ...patch };
       if (patch.estimateHours !== undefined && patch.estimateHours !== null) {
@@ -637,7 +709,10 @@ export const DELIVERY_OPS = {
       }
       const saved = await save(ctx, 'stories', next, revision);
       if (patch.assigneeId !== undefined && patch.assigneeId !== story.assigneeId) {
-        await recordEvent(ctx, story.projectId, 'story', story.id, 'assignment', { from: story.assigneeId, to: patch.assigneeId });
+        await recordEvent(ctx, story.projectId, 'story', story.id, 'assignment', {
+          from: story.assigneeId,
+          to: patch.assigneeId,
+        });
       }
       if (patch.estimateHours !== undefined && patch.estimateHours !== story.estimateHours) {
         await recordEvent(ctx, story.projectId, 'story', story.id, 'edit', {
@@ -660,38 +735,66 @@ export const DELIVERY_OPS = {
     }
   }),
 
-  moveStory: op(z.strictObject({ storyId: Id, revision: z.number().int(), to: z.enum(WORK_STATUSES) }), async (ctx, { storyId, revision, to }) => {
-    const story = await load(ctx, 'stories', storyId);
-    const role = await roleIn(ctx, story.projectId);
-    checkRevision(story, revision);
-    const [settings, open, stories] = await Promise.all([settingsFor(ctx, story.projectId), openSprintOf(ctx, story), ctx.store.list('stories', story.projectId)]);
-    const problem = checkWorkMove(story, to, role, {
-      settings,
-      sprint: open?.sprint ?? null,
-      dependencies: stories.filter((s) => story.dependsOnIds.includes(s.id)),
-    });
-    if (problem) fail(problem, problem.startsWith('Only') ? '42501' : 'PF422');
-    if (to === story.workStatus) return story;
-    const next = applyWorkMove(story, to, ctx.now());
-    const saved = await save(ctx, 'stories', next, revision);
-    await recordEvent(ctx, story.projectId, 'story', story.id, 'work_status', { from: story.workStatus, to });
-    if (next.remainingHours !== story.remainingHours) {
-      await recordEvent(ctx, story.projectId, 'story', story.id, 'effort', { from: String(story.remainingHours ?? ''), to: String(next.remainingHours), body: 'Completed' });
-    }
-    return saved;
-  }),
+  moveStory: op(
+    z.strictObject({ storyId: Id, revision: z.number().int(), to: z.enum(WORK_STATUSES) }),
+    async (ctx, { storyId, revision, to }) => {
+      const story = await load(ctx, 'stories', storyId);
+      const role = await roleIn(ctx, story.projectId);
+      checkRevision(story, revision);
+      const [settings, open, stories] = await Promise.all([
+        settingsFor(ctx, story.projectId),
+        openSprintOf(ctx, story),
+        ctx.store.list('stories', story.projectId),
+      ]);
+      const problem = checkWorkMove(story, to, role, {
+        settings,
+        sprint: open?.sprint ?? null,
+        dependencies: stories.filter((s) => story.dependsOnIds.includes(s.id)),
+      });
+      if (problem) fail(problem, problem.startsWith('Only') ? '42501' : 'PF422');
+      if (to === story.workStatus) return story;
+      const next = applyWorkMove(story, to, ctx.now());
+      const saved = await save(ctx, 'stories', next, revision);
+      await recordEvent(ctx, story.projectId, 'story', story.id, 'work_status', { from: story.workStatus, to });
+      if (next.remainingHours !== story.remainingHours) {
+        await recordEvent(ctx, story.projectId, 'story', story.id, 'effort', {
+          from: String(story.remainingHours ?? ''),
+          to: String(next.remainingHours),
+          body: 'Completed',
+        });
+      }
+      return saved;
+    },
+  ),
 
   updateEffort: op(
-    z.strictObject({ storyId: Id, revision: z.number().int(), remainingHours: Hours.optional(), actualHours: Hours.optional(), note: z.string().max(500).default('') }),
+    z.strictObject({
+      storyId: Id,
+      revision: z.number().int(),
+      remainingHours: Hours.optional(),
+      actualHours: Hours.optional(),
+      note: z.string().max(500).default(''),
+    }),
     async (ctx, { storyId, revision, remainingHours, actualHours, note }) => {
       const story = await load(ctx, 'stories', storyId);
-      await requirePermission(ctx, story.projectId, 'updateWork', 'Only Developers, Product Owners and Administrators can update effort');
+      await requirePermission(
+        ctx,
+        story.projectId,
+        'updateWork',
+        'Only Developers, Product Owners and Administrators can update effort',
+      );
       checkRevision(story, revision);
       if (story.status !== 'in_backlog') fail(`${story.refCode} is not in the backlog`, 'PF423');
-      const next = { ...story, remainingHours: remainingHours ?? story.remainingHours, actualHours: actualHours ?? story.actualHours };
+      const next = {
+        ...story,
+        remainingHours: remainingHours ?? story.remainingHours,
+        actualHours: actualHours ?? story.actualHours,
+      };
       const saved = await save(ctx, 'stories', next, revision);
       const parts = [
-        remainingHours !== undefined && remainingHours !== story.remainingHours ? `Remaining ${story.remainingHours ?? '–'} h → ${remainingHours} h` : '',
+        remainingHours !== undefined && remainingHours !== story.remainingHours
+          ? `Remaining ${story.remainingHours ?? '–'} h → ${remainingHours} h`
+          : '',
         actualHours !== undefined && actualHours !== story.actualHours ? `Actual ${story.actualHours} h → ${actualHours} h` : '',
         note.trim(),
       ].filter(Boolean);
@@ -710,35 +813,64 @@ export const DELIVERY_OPS = {
     z.strictObject({ storyId: Id, revision: z.number().int(), blocked: z.boolean(), reason: z.string().max(1000).default('') }),
     async (ctx, { storyId, revision, blocked, reason }) => {
       const story = await load(ctx, 'stories', storyId);
-      await requirePermission(ctx, story.projectId, 'updateWork', 'Only Developers, Product Owners and Administrators can block stories');
+      await requirePermission(
+        ctx,
+        story.projectId,
+        'updateWork',
+        'Only Developers, Product Owners and Administrators can block stories',
+      );
       checkRevision(story, revision);
       if (blocked && !reason.trim()) fail('Say what the story is blocked by', 'PF422');
       const saved = await save(ctx, 'stories', { ...story, blocked, blockedReason: blocked ? reason.trim() : '' }, revision);
-      await recordEvent(ctx, story.projectId, 'story', story.id, 'flag', { to: blocked ? 'blocked' : 'unblocked', body: reason.trim() });
+      await recordEvent(ctx, story.projectId, 'story', story.id, 'flag', {
+        to: blocked ? 'blocked' : 'unblocked',
+        body: reason.trim(),
+      });
       return saved;
     },
   ),
 
-  clearReviewFlag: op(z.strictObject({ entityType: z.enum(['story', 'scenario']), id: Id, note: z.string().max(1000).default('') }), async (ctx, { entityType, id, note }) => {
-    if (entityType === 'story') {
-      const story = await load(ctx, 'stories', id);
-      const role = await roleIn(ctx, story.projectId);
-      if (!canEditStory(role, story) && !canDeliver(role, 'reviewStory')) fail('You do not have permission to review this story', '42501');
-      await save(ctx, 'stories', { ...story, reviewFlag: null }, story.revision);
-      await recordEvent(ctx, story.projectId, 'story', id, 'flag', { from: story.reviewFlag, to: 'reviewed', body: note.trim() });
-    } else {
-      const scenario = await load(ctx, 'scenarios', id);
-      await requirePermission(ctx, scenario.projectId, 'editScenarios', 'You do not have permission to review this scenario');
-      await save(ctx, 'scenarios', { ...scenario, reviewFlag: null }, scenario.revision);
-      await recordEvent(ctx, scenario.projectId, 'scenario', id, 'flag', { from: scenario.reviewFlag, to: 'reviewed', body: note.trim() });
-    }
-  }),
+  clearReviewFlag: op(
+    z.strictObject({ entityType: z.enum(['story', 'scenario']), id: Id, note: z.string().max(1000).default('') }),
+    async (ctx, { entityType, id, note }) => {
+      if (entityType === 'story') {
+        const story = await load(ctx, 'stories', id);
+        const role = await roleIn(ctx, story.projectId);
+        if (!canEditStory(role, story) && !canDeliver(role, 'reviewStory'))
+          fail('You do not have permission to review this story', '42501');
+        await save(ctx, 'stories', { ...story, reviewFlag: null }, story.revision);
+        await recordEvent(ctx, story.projectId, 'story', id, 'flag', {
+          from: story.reviewFlag,
+          to: 'reviewed',
+          body: note.trim(),
+        });
+      } else {
+        const scenario = await load(ctx, 'scenarios', id);
+        await requirePermission(ctx, scenario.projectId, 'editScenarios', 'You do not have permission to review this scenario');
+        await save(ctx, 'scenarios', { ...scenario, reviewFlag: null }, scenario.revision);
+        await recordEvent(ctx, scenario.projectId, 'scenario', id, 'flag', {
+          from: scenario.reviewFlag,
+          to: 'reviewed',
+          body: note.trim(),
+        });
+      }
+    },
+  ),
 
-  addComment: op(z.strictObject({ entityType: z.enum(EVENT_ENTITIES), entityId: Id, body: z.string().trim().min(1, 'Write a comment first').max(4000) }), async (ctx, { entityType, entityId, body }) => {
-    const kind = ({ story: 'stories', sprint: 'sprints', scenario: 'scenarios', execution: 'executions', defect: 'defects' } as const)[entityType];
-    const entity = await load(ctx, kind, entityId);
-    await recordEvent(ctx, entity.projectId, entityType, entityId, 'comment', { body });
-  }),
+  addComment: op(
+    z.strictObject({
+      entityType: z.enum(EVENT_ENTITIES),
+      entityId: Id,
+      body: z.string().trim().min(1, 'Write a comment first').max(4000),
+    }),
+    async (ctx, { entityType, entityId, body }) => {
+      const kind = (
+        { story: 'stories', sprint: 'sprints', scenario: 'scenarios', execution: 'executions', defect: 'defects' } as const
+      )[entityType];
+      const entity = await load(ctx, kind, entityId);
+      await recordEvent(ctx, entity.projectId, entityType, entityId, 'comment', { body });
+    },
+  ),
 
   // ----- Sprints ------------------------------------------------------------
 
@@ -767,40 +899,69 @@ export const DELIVERY_OPS = {
     return sprint;
   }),
 
-  updateSprint: op(SprintFieldsSchema.extend({ sprintId: Id, revision: z.number().int() }), async (ctx, { sprintId, revision, ...fields }) => {
-    const sprint = await load(ctx, 'sprints', sprintId);
-    await requirePermission(ctx, sprint.projectId, 'manageBacklog', 'Only a Product Owner or Administrator can plan sprints');
-    checkRevision(sprint, revision);
-    if (sprint.status === 'completed' || sprint.status === 'cancelled') fail(`${sprint.name} is ${sprint.status} and cannot be changed`, 'PF423');
-    if (fields.endDate < fields.startDate) fail('The sprint must end on or after its start date', 'PF422');
-    if (sprint.status === 'active' && fields.startDate !== sprint.startDate) fail('The start date of an active sprint cannot change', 'PF423');
-    return save(ctx, 'sprints', { ...sprint, ...fields, name: fields.name.trim() || sprint.name }, revision);
-  }),
+  updateSprint: op(
+    SprintFieldsSchema.extend({ sprintId: Id, revision: z.number().int() }),
+    async (ctx, { sprintId, revision, ...fields }) => {
+      const sprint = await load(ctx, 'sprints', sprintId);
+      await requirePermission(ctx, sprint.projectId, 'manageBacklog', 'Only a Product Owner or Administrator can plan sprints');
+      checkRevision(sprint, revision);
+      if (sprint.status === 'completed' || sprint.status === 'cancelled')
+        fail(`${sprint.name} is ${sprint.status} and cannot be changed`, 'PF423');
+      if (fields.endDate < fields.startDate) fail('The sprint must end on or after its start date', 'PF422');
+      if (sprint.status === 'active' && fields.startDate !== sprint.startDate)
+        fail('The start date of an active sprint cannot change', 'PF423');
+      return save(ctx, 'sprints', { ...sprint, ...fields, name: fields.name.trim() || sprint.name }, revision);
+    },
+  ),
 
-  setSprintStatus: op(z.strictObject({ sprintId: Id, revision: z.number().int(), status: z.enum(SPRINT_STATUSES) }), async (ctx, { sprintId, revision, status }) => {
-    const sprint = await load(ctx, 'sprints', sprintId);
-    await requirePermission(ctx, sprint.projectId, 'manageBacklog', 'Only a Product Owner or Administrator can start or close sprints');
-    checkRevision(sprint, revision);
-    const [sprints, settings] = await Promise.all([ctx.store.list('sprints', sprint.projectId), settingsFor(ctx, sprint.projectId)]);
-    const problem = checkSprintStatusChange(sprint, status, sprints.filter((s) => s.status === 'active'), settings.allowConcurrentSprints);
-    if (problem) fail(problem, 'PF422');
-    const t = ctx.now();
-    const next: Sprint = { ...sprint, status };
-    if (status === 'active') next.startedAt = t;
-    if (status === 'completed' || status === 'cancelled') next.completedAt = t;
-    const saved = await save(ctx, 'sprints', next, revision);
-    await recordEvent(ctx, sprint.projectId, 'sprint', sprint.id, 'status', { from: sprint.status, to: status });
-    return saved;
-  }),
+  setSprintStatus: op(
+    z.strictObject({ sprintId: Id, revision: z.number().int(), status: z.enum(SPRINT_STATUSES) }),
+    async (ctx, { sprintId, revision, status }) => {
+      const sprint = await load(ctx, 'sprints', sprintId);
+      await requirePermission(
+        ctx,
+        sprint.projectId,
+        'manageBacklog',
+        'Only a Product Owner or Administrator can start or close sprints',
+      );
+      checkRevision(sprint, revision);
+      const [sprints, settings] = await Promise.all([
+        ctx.store.list('sprints', sprint.projectId),
+        settingsFor(ctx, sprint.projectId),
+      ]);
+      const problem = checkSprintStatusChange(
+        sprint,
+        status,
+        sprints.filter((s) => s.status === 'active'),
+        settings.allowConcurrentSprints,
+      );
+      if (problem) fail(problem, 'PF422');
+      const t = ctx.now();
+      const next: Sprint = { ...sprint, status };
+      if (status === 'active') next.startedAt = t;
+      if (status === 'completed' || status === 'cancelled') next.completedAt = t;
+      const saved = await save(ctx, 'sprints', next, revision);
+      await recordEvent(ctx, sprint.projectId, 'sprint', sprint.id, 'status', { from: sprint.status, to: status });
+      return saved;
+    },
+  ),
 
   addToSprint: op(
-    z.strictObject({ sprintId: Id, storyId: Id, plannedHours: Hours.optional(), assigneeId: Id.nullable().optional(), plannedStart: IsoDate.nullable().default(null), plannedEnd: IsoDate.nullable().default(null) }),
+    z.strictObject({
+      sprintId: Id,
+      storyId: Id,
+      plannedHours: Hours.optional(),
+      assigneeId: Id.nullable().optional(),
+      plannedStart: IsoDate.nullable().default(null),
+      plannedEnd: IsoDate.nullable().default(null),
+    }),
     async (ctx, input) => {
       const sprint = await load(ctx, 'sprints', input.sprintId);
       await requirePermission(ctx, sprint.projectId, 'manageBacklog', 'Only a Product Owner or Administrator can plan sprints');
       const story = await load(ctx, 'stories', input.storyId);
       if (story.projectId !== sprint.projectId) fail('The story is not in this project', 'PF422');
-      if (story.status !== 'in_backlog') fail(`${story.refCode} must be in the backlog before it is planned into a sprint`, 'PF422');
+      if (story.status !== 'in_backlog')
+        fail(`${story.refCode} must be in the backlog before it is planned into a sprint`, 'PF422');
       if (sprint.status !== 'planned' && sprint.status !== 'active') fail(`${sprint.name} is ${sprint.status}`, 'PF423');
       if (story.workStatus === 'completed') fail(`${story.refCode} is already completed`, 'PF422');
       const open = await openSprintOf(ctx, story);
@@ -820,20 +981,30 @@ export const DELIVERY_OPS = {
         removedAt: null,
       };
       await ctx.store.insert('sprintItems', item);
-      if (item.assigneeId && !story.assigneeId) await save(ctx, 'stories', { ...story, assigneeId: item.assigneeId }, story.revision);
-      await recordEvent(ctx, sprint.projectId, 'story', story.id, 'edit', { body: `Planned into ${sprint.name}${item.committed ? '' : ' after it started'}` });
+      if (item.assigneeId && !story.assigneeId)
+        await save(ctx, 'stories', { ...story, assigneeId: item.assigneeId }, story.revision);
+      await recordEvent(ctx, sprint.projectId, 'story', story.id, 'edit', {
+        body: `Planned into ${sprint.name}${item.committed ? '' : ' after it started'}`,
+      });
       return item;
     },
   ),
 
   updateSprintItem: op(
-    z.strictObject({ itemId: Id, plannedHours: Hours, assigneeId: Id.nullable(), plannedStart: IsoDate.nullable(), plannedEnd: IsoDate.nullable() }),
+    z.strictObject({
+      itemId: Id,
+      plannedHours: Hours,
+      assigneeId: Id.nullable(),
+      plannedStart: IsoDate.nullable(),
+      plannedEnd: IsoDate.nullable(),
+    }),
     async (ctx, { itemId, ...patch }) => {
       const item = await load(ctx, 'sprintItems', itemId);
       await requirePermission(ctx, item.projectId, 'manageBacklog', 'Only a Product Owner or Administrator can plan sprints');
       if (item.removedAt) fail('This story was taken out of the sprint', 'PF423');
       await checkMember(ctx, item.projectId, patch.assigneeId);
-      if (patch.plannedStart && patch.plannedEnd && patch.plannedEnd < patch.plannedStart) fail('Planned completion must be on or after the planned start', 'PF422');
+      if (patch.plannedStart && patch.plannedEnd && patch.plannedEnd < patch.plannedStart)
+        fail('Planned completion must be on or after the planned start', 'PF422');
       const next = { ...item, ...patch };
       await ctx.store.update('sprintItems', next);
       return next;
@@ -854,80 +1025,119 @@ export const DELIVERY_OPS = {
 
   // ----- Business scenarios -----------------------------------------------------
 
-  createScenarios: op(z.strictObject({ projectId: Id, scenarios: z.array(NewScenarioSchema).min(1).max(50) }), async (ctx, { projectId, scenarios }) => {
-    await requirePermission(ctx, projectId, 'editScenarios', 'Only Business Analysts and Administrators can write test scenarios');
-    const created: BusinessScenario[] = [];
-    for (const input of scenarios) {
-      const content = scenarioFrom(ctx, input.content);
-      await checkScenarioLinks(ctx, projectId, content);
-      const t = ctx.now();
-      const scenario: BusinessScenario = {
-        ...content,
-        id: ctx.newId(),
+  createScenarios: op(
+    z.strictObject({ projectId: Id, scenarios: z.array(NewScenarioSchema).min(1).max(50) }),
+    async (ctx, { projectId, scenarios }) => {
+      await requirePermission(
+        ctx,
         projectId,
-        refCode: await ctx.store.nextRef(projectId, 'BS'),
-        prerequisitesMet: false,
-        status: 'draft',
-        origin: input.origin,
-        version: 1,
-        reviewFlag: null,
-        createdBy: ctx.userId,
-        createdAt: t,
-        updatedAt: t,
-        revision: 1,
-      };
-      await ctx.store.insert('scenarios', scenario);
-      await recordEvent(ctx, projectId, 'scenario', scenario.id, 'created');
-      created.push(scenario);
-    }
-    return created;
-  }),
-
-  updateScenario: op(z.strictObject({ scenarioId: Id, revision: z.number().int(), content: ScenarioContentSchema }), async (ctx, { scenarioId, revision, content }) => {
-    const scenario = await load(ctx, 'scenarios', scenarioId);
-    await requirePermission(ctx, scenario.projectId, 'editScenarios', 'Only Business Analysts and Administrators can edit test scenarios');
-    checkRevision(scenario, revision);
-    if (scenario.status !== 'draft') fail(`${scenario.refCode} is approved. Return it to draft before changing it.`, 'PF423');
-    const next = scenarioFrom(ctx, content);
-    await checkScenarioLinks(ctx, scenario.projectId, next);
-    return save(ctx, 'scenarios', { ...scenario, ...next, version: scenario.version + 1 }, revision);
-  }),
-
-  setScenarioStatus: op(z.strictObject({ scenarioId: Id, revision: z.number().int(), status: z.enum(SCENARIO_STATUSES) }), async (ctx, { scenarioId, revision, status }) => {
-    const scenario = await load(ctx, 'scenarios', scenarioId);
-    const role = await roleIn(ctx, scenario.projectId);
-    checkRevision(scenario, revision);
-    if (scenario.status === status) return scenario;
-    if (status === 'approved') {
-      if (!canDeliver(role, 'approveScenario')) fail('Only a Product Owner or Administrator can approve a test scenario', '42501');
-      if (scenario.steps.length === 0 || scenario.steps.some((s) => !s.expectedResult.trim())) {
-        fail(`Every step of ${scenario.refCode} needs an expected result before it is approved`, 'PF422');
+        'editScenarios',
+        'Only Business Analysts and Administrators can write test scenarios',
+      );
+      const created: BusinessScenario[] = [];
+      for (const input of scenarios) {
+        const content = scenarioFrom(ctx, input.content);
+        await checkScenarioLinks(ctx, projectId, content);
+        const t = ctx.now();
+        const scenario: BusinessScenario = {
+          ...content,
+          id: ctx.newId(),
+          projectId,
+          refCode: await ctx.store.nextRef(projectId, 'BS'),
+          prerequisitesMet: false,
+          status: 'draft',
+          origin: input.origin,
+          version: 1,
+          reviewFlag: null,
+          createdBy: ctx.userId,
+          createdAt: t,
+          updatedAt: t,
+          revision: 1,
+        };
+        await ctx.store.insert('scenarios', scenario);
+        await recordEvent(ctx, projectId, 'scenario', scenario.id, 'created');
+        created.push(scenario);
       }
-    } else {
-      if (!canDeliver(role, 'editScenarios') && !canDeliver(role, 'approveScenario')) fail('You do not have permission to change this scenario', '42501');
-      const running = (await ctx.store.list('executions', scenario.projectId)).some((e) => e.scenarioId === scenarioId && e.status === 'in_progress');
-      if (running) fail(`${scenario.refCode} is being tested. Finish that test first.`, 'PF423');
-    }
-    const saved = await save(ctx, 'scenarios', { ...scenario, status }, revision);
-    await recordEvent(ctx, scenario.projectId, 'scenario', scenarioId, 'status', { from: scenario.status, to: status });
-    return saved;
-  }),
+      return created;
+    },
+  ),
 
-  setPrerequisites: op(z.strictObject({ scenarioId: Id, revision: z.number().int(), prerequisites: LongText, met: z.boolean() }), async (ctx, { scenarioId, revision, prerequisites, met }) => {
-    const scenario = await load(ctx, 'scenarios', scenarioId);
-    const role = await roleIn(ctx, scenario.projectId);
-    if (!canDeliver(role, 'editScenarios') && !canDeliver(role, 'executeTests')) fail('You do not have permission to change prerequisites', '42501');
-    checkRevision(scenario, revision);
-    const saved = await save(ctx, 'scenarios', { ...scenario, prerequisites: prerequisites.trim(), prerequisitesMet: met }, revision);
-    if (met !== scenario.prerequisitesMet) {
-      await recordEvent(ctx, scenario.projectId, 'scenario', scenarioId, 'flag', { to: met ? 'prerequisites met' : 'prerequisites not met' });
-    }
-    return saved;
-  }),
+  updateScenario: op(
+    z.strictObject({ scenarioId: Id, revision: z.number().int(), content: ScenarioContentSchema }),
+    async (ctx, { scenarioId, revision, content }) => {
+      const scenario = await load(ctx, 'scenarios', scenarioId);
+      await requirePermission(
+        ctx,
+        scenario.projectId,
+        'editScenarios',
+        'Only Business Analysts and Administrators can edit test scenarios',
+      );
+      checkRevision(scenario, revision);
+      if (scenario.status !== 'draft') fail(`${scenario.refCode} is approved. Return it to draft before changing it.`, 'PF423');
+      const next = scenarioFrom(ctx, content);
+      await checkScenarioLinks(ctx, scenario.projectId, next);
+      return save(ctx, 'scenarios', { ...scenario, ...next, version: scenario.version + 1 }, revision);
+    },
+  ),
+
+  setScenarioStatus: op(
+    z.strictObject({ scenarioId: Id, revision: z.number().int(), status: z.enum(SCENARIO_STATUSES) }),
+    async (ctx, { scenarioId, revision, status }) => {
+      const scenario = await load(ctx, 'scenarios', scenarioId);
+      const role = await roleIn(ctx, scenario.projectId);
+      checkRevision(scenario, revision);
+      if (scenario.status === status) return scenario;
+      if (status === 'approved') {
+        if (!canDeliver(role, 'approveScenario'))
+          fail('Only a Product Owner or Administrator can approve a test scenario', '42501');
+        if (scenario.steps.length === 0 || scenario.steps.some((s) => !s.expectedResult.trim())) {
+          fail(`Every step of ${scenario.refCode} needs an expected result before it is approved`, 'PF422');
+        }
+      } else {
+        if (!canDeliver(role, 'editScenarios') && !canDeliver(role, 'approveScenario'))
+          fail('You do not have permission to change this scenario', '42501');
+        const running = (await ctx.store.list('executions', scenario.projectId)).some(
+          (e) => e.scenarioId === scenarioId && e.status === 'in_progress',
+        );
+        if (running) fail(`${scenario.refCode} is being tested. Finish that test first.`, 'PF423');
+      }
+      const saved = await save(ctx, 'scenarios', { ...scenario, status }, revision);
+      await recordEvent(ctx, scenario.projectId, 'scenario', scenarioId, 'status', { from: scenario.status, to: status });
+      return saved;
+    },
+  ),
+
+  setPrerequisites: op(
+    z.strictObject({ scenarioId: Id, revision: z.number().int(), prerequisites: LongText, met: z.boolean() }),
+    async (ctx, { scenarioId, revision, prerequisites, met }) => {
+      const scenario = await load(ctx, 'scenarios', scenarioId);
+      const role = await roleIn(ctx, scenario.projectId);
+      if (!canDeliver(role, 'editScenarios') && !canDeliver(role, 'executeTests'))
+        fail('You do not have permission to change prerequisites', '42501');
+      checkRevision(scenario, revision);
+      const saved = await save(
+        ctx,
+        'scenarios',
+        { ...scenario, prerequisites: prerequisites.trim(), prerequisitesMet: met },
+        revision,
+      );
+      if (met !== scenario.prerequisitesMet) {
+        await recordEvent(ctx, scenario.projectId, 'scenario', scenarioId, 'flag', {
+          to: met ? 'prerequisites met' : 'prerequisites not met',
+        });
+      }
+      return saved;
+    },
+  ),
 
   deleteScenario: op(z.strictObject({ scenarioId: Id }), async (ctx, { scenarioId }) => {
     const scenario = await load(ctx, 'scenarios', scenarioId);
-    await requirePermission(ctx, scenario.projectId, 'editScenarios', 'Only Business Analysts and Administrators can delete test scenarios');
+    await requirePermission(
+      ctx,
+      scenario.projectId,
+      'editScenarios',
+      'Only Business Analysts and Administrators can delete test scenarios',
+    );
     if (scenario.status !== 'draft') fail('Only draft scenarios can be deleted', 'PF423');
     if ((await ctx.store.list('executions', scenario.projectId)).some((e) => e.scenarioId === scenarioId)) {
       fail(`${scenario.refCode} has test history and cannot be deleted`, 'PF423');
@@ -939,8 +1149,16 @@ export const DELIVERY_OPS = {
 
   startExecution: op(z.strictObject({ scenarioId: Id }), async (ctx, { scenarioId }) => {
     const scenario = await load(ctx, 'scenarios', scenarioId);
-    await requirePermission(ctx, scenario.projectId, 'executeTests', 'Only Business Users, Analysts, Product Owners and Administrators run UAT');
-    const [stories, executions] = await Promise.all([ctx.store.list('stories', scenario.projectId), ctx.store.list('executions', scenario.projectId)]);
+    await requirePermission(
+      ctx,
+      scenario.projectId,
+      'executeTests',
+      'Only Business Users, Analysts, Product Owners and Administrators run UAT',
+    );
+    const [stories, executions] = await Promise.all([
+      ctx.store.list('stories', scenario.projectId),
+      ctx.store.list('executions', scenario.projectId),
+    ]);
     const readiness = scenarioReadiness(scenario, new Map(stories.map((s) => [s.id, s])));
     if (!readiness.ready) fail(`${scenario.refCode} is not ready for testing: ${readiness.reasons.join('; ')}`, 'PF422');
     const running = executions.find((e) => e.scenarioId === scenarioId && e.status === 'in_progress');
@@ -952,7 +1170,13 @@ export const DELIVERY_OPS = {
       scenarioId,
       scenarioVersion: scenario.version,
       steps: scenario.steps,
-      results: scenario.steps.map((s) => ({ stepId: s.id, status: 'not_tested', testData: s.inputData, actualResult: '', remarks: '' })),
+      results: scenario.steps.map((s) => ({
+        stepId: s.id,
+        status: 'not_tested',
+        testData: s.inputData,
+        actualResult: '',
+        remarks: '',
+      })),
       status: 'in_progress',
       testerId: ctx.userId,
       remarks: '',
@@ -961,39 +1185,72 @@ export const DELIVERY_OPS = {
       revision: 1,
     };
     await ctx.store.insert('executions', execution);
-    await recordEvent(ctx, scenario.projectId, 'execution', execution.id, 'created', { body: `Testing ${scenario.refCode} v${scenario.version}` });
+    await recordEvent(ctx, scenario.projectId, 'execution', execution.id, 'created', {
+      body: `Testing ${scenario.refCode} v${scenario.version}`,
+    });
     return execution;
   }),
 
   recordStepResult: op(
-    z.strictObject({ executionId: Id, revision: z.number().int(), stepId: Id, status: z.enum(STEP_RESULTS), testData: z.string().max(2000), actualResult: z.string().max(4000), remarks: z.string().max(4000) }),
+    z.strictObject({
+      executionId: Id,
+      revision: z.number().int(),
+      stepId: Id,
+      status: z.enum(STEP_RESULTS),
+      testData: z.string().max(2000),
+      actualResult: z.string().max(4000),
+      remarks: z.string().max(4000),
+    }),
     async (ctx, { executionId, revision, stepId, ...result }) => {
       const execution = await load(ctx, 'executions', executionId);
       await requirePermission(ctx, execution.projectId, 'executeTests', 'You do not have permission to record test results');
       checkRevision(execution, revision);
-      if (execution.status !== 'in_progress') fail(`${execution.refCode} is completed. Test history cannot be changed; start a new test instead.`, 'PF423');
+      if (execution.status !== 'in_progress')
+        fail(`${execution.refCode} is completed. Test history cannot be changed; start a new test instead.`, 'PF423');
       if (!execution.results.some((r) => r.stepId === stepId)) fail('That step is not part of this test', 'PF422');
       if (result.status === 'fail' && !result.actualResult.trim()) fail('Describe the actual result of a failed step', 'PF422');
-      return save(ctx, 'executions', { ...execution, results: execution.results.map((r) => (r.stepId === stepId ? { stepId, ...result } : r)) }, revision);
+      return save(
+        ctx,
+        'executions',
+        { ...execution, results: execution.results.map((r) => (r.stepId === stepId ? { stepId, ...result } : r)) },
+        revision,
+      );
     },
   ),
 
-  completeExecution: op(z.strictObject({ executionId: Id, revision: z.number().int(), remarks: z.string().max(4000).default('') }), async (ctx, { executionId, revision, remarks }) => {
-    const execution = await load(ctx, 'executions', executionId);
-    await requirePermission(ctx, execution.projectId, 'executeTests', 'You do not have permission to complete tests');
-    checkRevision(execution, revision);
-    if (execution.status !== 'in_progress') fail(`${execution.refCode} is already completed`, 'PF423');
-    const outcome = executionOutcome(execution.results);
-    if ('error' in outcome) return fail(outcome.error, 'PF422');
-    const saved = await save(ctx, 'executions', { ...execution, status: outcome.status, remarks: remarks.trim(), completedAt: ctx.now() }, revision);
-    await recordEvent(ctx, execution.projectId, 'execution', executionId, 'status', { from: 'in_progress', to: outcome.status });
-    return saved;
-  }),
+  completeExecution: op(
+    z.strictObject({ executionId: Id, revision: z.number().int(), remarks: z.string().max(4000).default('') }),
+    async (ctx, { executionId, revision, remarks }) => {
+      const execution = await load(ctx, 'executions', executionId);
+      await requirePermission(ctx, execution.projectId, 'executeTests', 'You do not have permission to complete tests');
+      checkRevision(execution, revision);
+      if (execution.status !== 'in_progress') fail(`${execution.refCode} is already completed`, 'PF423');
+      const outcome = executionOutcome(execution.results);
+      if ('error' in outcome) return fail(outcome.error, 'PF422');
+      const saved = await save(
+        ctx,
+        'executions',
+        { ...execution, status: outcome.status, remarks: remarks.trim(), completedAt: ctx.now() },
+        revision,
+      );
+      await recordEvent(ctx, execution.projectId, 'execution', executionId, 'status', {
+        from: 'in_progress',
+        to: outcome.status,
+      });
+      return saved;
+    },
+  ),
 
   // ----- Defects --------------------------------------------------------------
 
   createDefect: op(
-    DefectFieldsSchema.partial().extend({ projectId: Id, title: ShortText, severity: z.enum(DEFECT_SEVERITIES), executionId: Id.optional(), stepId: Id.optional() }),
+    DefectFieldsSchema.partial().extend({
+      projectId: Id,
+      title: ShortText,
+      severity: z.enum(DEFECT_SEVERITIES),
+      executionId: Id.optional(),
+      stepId: Id.optional(),
+    }),
     async (ctx, input) => {
       await roleIn(ctx, input.projectId);
       if (!input.title.trim()) fail('Give the defect a title', 'PF422');
@@ -1054,128 +1311,181 @@ export const DELIVERY_OPS = {
     },
   ),
 
-  updateDefect: op(z.strictObject({ defectId: Id, revision: z.number().int(), patch: DefectFieldsSchema.partial() }), async (ctx, { defectId, revision, patch }) => {
-    const defect = await load(ctx, 'defects', defectId);
-    const role = await roleIn(ctx, defect.projectId);
-    checkRevision(defect, revision);
-    if (defect.status === 'closed') fail(`${defect.refCode} is closed. Reopen it to change it.`, 'PF423');
-    const mayEdit = defect.createdBy === ctx.userId || canDeliver(role, 'workDefect') || canDeliver(role, 'verifyDefect');
-    if (!mayEdit) fail('You do not have permission to edit this defect', '42501');
-    if (patch.assigneeId !== undefined && patch.assigneeId !== defect.assigneeId && !canDeliver(role, 'workDefect')) {
-      fail('Only Developers, Product Owners and Administrators can assign defects', '42501');
-    }
-    await checkMember(ctx, defect.projectId, patch.assigneeId);
-    if (patch.attachments) checkAttachments(patch.attachments);
-    if (patch.storyIds) {
-      const stories = new Set((await ctx.store.list('stories', defect.projectId)).map((s) => s.id));
-      if (patch.storyIds.some((id) => !stories.has(id))) fail('A linked story is not in this project', 'PF422');
-    }
-    const next: Defect = { ...defect, ...patch };
-    if (defect.status === 'open' && next.assigneeId) next.status = 'assigned';
-    const saved = await save(ctx, 'defects', next, revision);
-    if (next.assigneeId !== defect.assigneeId) {
-      await recordEvent(ctx, defect.projectId, 'defect', defectId, 'assignment', { from: defect.assigneeId, to: next.assigneeId });
-    }
-    if (next.status !== defect.status) await recordEvent(ctx, defect.projectId, 'defect', defectId, 'status', { from: defect.status, to: next.status });
-    return saved;
-  }),
+  updateDefect: op(
+    z.strictObject({ defectId: Id, revision: z.number().int(), patch: DefectFieldsSchema.partial() }),
+    async (ctx, { defectId, revision, patch }) => {
+      const defect = await load(ctx, 'defects', defectId);
+      const role = await roleIn(ctx, defect.projectId);
+      checkRevision(defect, revision);
+      if (defect.status === 'closed') fail(`${defect.refCode} is closed. Reopen it to change it.`, 'PF423');
+      const mayEdit = defect.createdBy === ctx.userId || canDeliver(role, 'workDefect') || canDeliver(role, 'verifyDefect');
+      if (!mayEdit) fail('You do not have permission to edit this defect', '42501');
+      if (patch.assigneeId !== undefined && patch.assigneeId !== defect.assigneeId && !canDeliver(role, 'workDefect')) {
+        fail('Only Developers, Product Owners and Administrators can assign defects', '42501');
+      }
+      await checkMember(ctx, defect.projectId, patch.assigneeId);
+      if (patch.attachments) checkAttachments(patch.attachments);
+      if (patch.storyIds) {
+        const stories = new Set((await ctx.store.list('stories', defect.projectId)).map((s) => s.id));
+        if (patch.storyIds.some((id) => !stories.has(id))) fail('A linked story is not in this project', 'PF422');
+      }
+      const next: Defect = { ...defect, ...patch };
+      if (defect.status === 'open' && next.assigneeId) next.status = 'assigned';
+      const saved = await save(ctx, 'defects', next, revision);
+      if (next.assigneeId !== defect.assigneeId) {
+        await recordEvent(ctx, defect.projectId, 'defect', defectId, 'assignment', {
+          from: defect.assigneeId,
+          to: next.assigneeId,
+        });
+      }
+      if (next.status !== defect.status)
+        await recordEvent(ctx, defect.projectId, 'defect', defectId, 'status', { from: defect.status, to: next.status });
+      return saved;
+    },
+  ),
 
   setDefectStatus: op(
-    z.strictObject({ defectId: Id, revision: z.number().int(), status: z.enum(DEFECT_STATUSES), comment: z.string().max(2000).default('') }),
+    z.strictObject({
+      defectId: Id,
+      revision: z.number().int(),
+      status: z.enum(DEFECT_STATUSES),
+      comment: z.string().max(2000).default(''),
+    }),
     async (ctx, { defectId, revision, status, comment }) => {
       const defect = await load(ctx, 'defects', defectId);
       const role = await roleIn(ctx, defect.projectId);
       checkRevision(defect, revision);
       const problem = checkDefectStatusChange(defect, status, role);
       if (problem) fail(problem, problem.startsWith('Only') ? '42501' : 'PF422');
-      const next: Defect = { ...defect, status, resolvedAt: status === 'closed' ? ctx.now() : status === 'reopened' ? null : defect.resolvedAt };
+      const next: Defect = {
+        ...defect,
+        status,
+        resolvedAt: status === 'closed' ? ctx.now() : status === 'reopened' ? null : defect.resolvedAt,
+      };
       const saved = await save(ctx, 'defects', next, revision);
-      await recordEvent(ctx, defect.projectId, 'defect', defectId, 'status', { from: defect.status, to: status, body: comment.trim() });
+      await recordEvent(ctx, defect.projectId, 'defect', defectId, 'status', {
+        from: defect.status,
+        to: status,
+        body: comment.trim(),
+      });
       return saved;
     },
   ),
 
   // ----- AI ---------------------------------------------------------------------
 
-  generateStories: op(z.strictObject({ projectId: Id, processId: Id, nodeKeys: Ids.optional() }), async (ctx, { projectId, processId, nodeKeys }): Promise<StoryProposal> => {
-    await requirePermission(ctx, projectId, 'editFunctional', 'Only Business Analysts and Administrators can write functional stories');
-    const context = await ctx.store.context(projectId);
-    const process = context.processes.find((p) => p.id === processId) ?? fail('Process not found.', 'P0002');
-    const version = approvedVersion(context, processId) ?? fail(`Approve ${process.name} before writing stories from it, so they are based on agreed requirements.`, 'PF422');
-    const fieldsById = new Map(context.fields.map((f) => [f.id, f]));
-    const actors = new Map(context.actors.map((a) => [a.id, a.name]));
-    const nodes = context.nodes.filter(
-      (n) => n.version_id === version.id && n.node_type !== 'start' && n.node_type !== 'end' && n.node_type !== 'decision' && (!nodeKeys || nodeKeys.includes(n.element_key)),
-    );
-    if (nodes.length === 0) fail('The process has no activities to write stories for.', 'PF422');
-    const keyById = new Map(nodes.map((n, i) => [`A${i + 1}`, n.element_key]));
-    const uses = context.activityFields.filter((f) => f.version_id === version.id);
-    const stories = await ctx.store.list('stories', projectId);
-    const input = {
-      processName: process.name,
-      processDescription: version.description,
-      activities: nodes.map((n, i) => ({
-        id: `A${i + 1}`,
-        refCode: n.ref_code,
-        type: n.node_type,
-        label: n.label,
-        description: n.description,
-        actor: n.actor_id ? (actors.get(n.actor_id) ?? null) : null,
-        inputs: uses
-          .filter((u) => u.node_key === n.element_key && u.direction === 'input' && fieldsById.has(u.field_id))
-          .map((u) => ({ ref: fieldsById.get(u.field_id)!.refCode, name: fieldsById.get(u.field_id)!.name, mandatory: u.mandatory, condition: u.mandatory_condition })),
-        outputs: uses.filter((u) => u.node_key === n.element_key && u.direction === 'output' && fieldsById.has(u.field_id)).map((u) => fieldsById.get(u.field_id)!.refCode),
-      })),
-      fields: context.fields.filter((f) => f.status !== 'deprecated').map((f) => ({ ref: f.refCode, name: f.name, dataType: f.dataType })),
-      businessRules: context.businessRules.filter((r) => r.status !== 'retired').map((r) => ({ ref: r.refCode, statement: r.statement })),
-      existingStories: stories
-        .filter((s) => s.storyType === 'functional' && s.activities.some((a) => a.processId === processId))
-        .map((s) => ({ ref: s.refCode, title: s.title })),
-    };
-    const result = await ctx.ai.run(STORY_GENERATION_TASK, input, { projectId, subjectId: version.id }, ctx.signal);
-    const fieldByRef = new Map(context.fields.map((f) => [f.refCode, f.id]));
-    const ruleByRef = new Map(context.businessRules.map((r) => [r.refCode, r.id]));
-    return {
-      runId: result.runId,
-      model: result.model,
-      questions: result.value.questions,
-      stories: result.value.stories.map((s) => ({
-        storyType: 'functional',
-        origin: s.origin,
-        assumptions: [],
-        content: {
-          ...EMPTY_STORY_CONTENT,
-          title: s.title,
-          userRole: s.userRole,
-          objective: s.objective,
-          benefit: s.benefit,
-          description: s.description,
-          behaviour: toItems(ctx, s.behaviour),
-          alternativeFlows: toItems(ctx, s.alternativeFlows),
-          acceptanceCriteria: toItems(ctx, s.acceptanceCriteria),
-          activities: s.activityIds.map((id) => ({ processId, nodeKey: keyById.get(id)! })),
-          fieldIds: dedupe(s.fieldRefs.map((r) => fieldByRef.get(r)!)),
-          businessRuleIds: dedupe(s.businessRuleRefs.map((r) => ruleByRef.get(r)!)),
-        },
-      })),
-    };
-  }),
+  generateStories: op(
+    z.strictObject({ projectId: Id, processId: Id, nodeKeys: Ids.optional() }),
+    async (ctx, { projectId, processId, nodeKeys }): Promise<StoryProposal> => {
+      await requirePermission(
+        ctx,
+        projectId,
+        'editFunctional',
+        'Only Business Analysts and Administrators can write functional stories',
+      );
+      const context = await ctx.store.context(projectId);
+      const process = context.processes.find((p) => p.id === processId) ?? fail('Process not found.', 'P0002');
+      const version =
+        approvedVersion(context, processId) ??
+        fail(`Approve ${process.name} before writing stories from it, so they are based on agreed requirements.`, 'PF422');
+      const fieldsById = new Map(context.fields.map((f) => [f.id, f]));
+      const actors = new Map(context.actors.map((a) => [a.id, a.name]));
+      const nodes = context.nodes.filter(
+        (n) =>
+          n.version_id === version.id &&
+          n.node_type !== 'start' &&
+          n.node_type !== 'end' &&
+          n.node_type !== 'decision' &&
+          (!nodeKeys || nodeKeys.includes(n.element_key)),
+      );
+      if (nodes.length === 0) fail('The process has no activities to write stories for.', 'PF422');
+      const keyById = new Map(nodes.map((n, i) => [`A${i + 1}`, n.element_key]));
+      const uses = context.activityFields.filter((f) => f.version_id === version.id);
+      const stories = await ctx.store.list('stories', projectId);
+      const input = {
+        processName: process.name,
+        processDescription: version.description,
+        activities: nodes.map((n, i) => ({
+          id: `A${i + 1}`,
+          refCode: n.ref_code,
+          type: n.node_type,
+          label: n.label,
+          description: n.description,
+          actor: n.actor_id ? (actors.get(n.actor_id) ?? null) : null,
+          inputs: uses
+            .filter((u) => u.node_key === n.element_key && u.direction === 'input' && fieldsById.has(u.field_id))
+            .map((u) => ({
+              ref: fieldsById.get(u.field_id)!.refCode,
+              name: fieldsById.get(u.field_id)!.name,
+              mandatory: u.mandatory,
+              condition: u.mandatory_condition,
+            })),
+          outputs: uses
+            .filter((u) => u.node_key === n.element_key && u.direction === 'output' && fieldsById.has(u.field_id))
+            .map((u) => fieldsById.get(u.field_id)!.refCode),
+        })),
+        fields: context.fields
+          .filter((f) => f.status !== 'deprecated')
+          .map((f) => ({ ref: f.refCode, name: f.name, dataType: f.dataType })),
+        businessRules: context.businessRules
+          .filter((r) => r.status !== 'retired')
+          .map((r) => ({ ref: r.refCode, statement: r.statement })),
+        existingStories: stories
+          .filter((s) => s.storyType === 'functional' && s.activities.some((a) => a.processId === processId))
+          .map((s) => ({ ref: s.refCode, title: s.title })),
+      };
+      const result = await ctx.ai.run(STORY_GENERATION_TASK, input, { projectId, subjectId: version.id }, ctx.signal);
+      const fieldByRef = new Map(context.fields.map((f) => [f.refCode, f.id]));
+      const ruleByRef = new Map(context.businessRules.map((r) => [r.refCode, r.id]));
+      return {
+        runId: result.runId,
+        model: result.model,
+        questions: result.value.questions,
+        stories: result.value.stories.map((s) => ({
+          storyType: 'functional',
+          origin: s.origin,
+          assumptions: [],
+          content: {
+            ...EMPTY_STORY_CONTENT,
+            title: s.title,
+            userRole: s.userRole,
+            objective: s.objective,
+            benefit: s.benefit,
+            description: s.description,
+            behaviour: toItems(ctx, s.behaviour),
+            alternativeFlows: toItems(ctx, s.alternativeFlows),
+            acceptanceCriteria: toItems(ctx, s.acceptanceCriteria),
+            activities: s.activityIds.map((id) => ({ processId, nodeKey: keyById.get(id)! })),
+            fieldIds: dedupe(s.fieldRefs.map((r) => fieldByRef.get(r)!)),
+            businessRuleIds: dedupe(s.businessRuleRefs.map((r) => ruleByRef.get(r)!)),
+          },
+        })),
+      };
+    },
+  ),
 
   generateTechnicalStories: op(z.strictObject({ storyId: Id }), async (ctx, { storyId }): Promise<StoryProposal> => {
     const story = await load(ctx, 'stories', storyId);
     await requirePermission(ctx, story.projectId, 'editTechnical', 'You do not have permission to write technical stories');
     if (story.storyType !== 'functional') fail('Technical stories are generated from a functional story', 'PF422');
-    const [context, stories] = await Promise.all([ctx.store.context(story.projectId), ctx.store.list('stories', story.projectId)]);
+    const [context, stories] = await Promise.all([
+      ctx.store.context(story.projectId),
+      ctx.store.list('stories', story.projectId),
+    ]);
     const index = activityIndex(context);
     const activityFieldIds = story.activities.flatMap((a) => {
       const info = index.get(activityKey(a));
-      return info ? context.activityFields.filter((f) => f.version_id === info.versionId && f.node_key === a.nodeKey).map((f) => f.field_id) : [];
+      return info
+        ? context.activityFields.filter((f) => f.version_id === info.versionId && f.node_key === a.nodeKey).map((f) => f.field_id)
+        : [];
     });
     const fieldIds = new Set([...story.fieldIds, ...activityFieldIds]);
     const fields = context.fields.filter((f) => fieldIds.has(f.id));
     const rules = context.validationRules.filter((r) => fieldIds.has(r.fieldId));
     const fieldRef = new Map(context.fields.map((f) => [f.id, f.refCode]));
-    const columnName = new Map(context.columns.map((c) => [c.id, `${c.systemName} ${c.tableName}.${c.columnName} (${c.dataType || 'type not recorded'})`]));
+    const columnName = new Map(
+      context.columns.map((c) => [c.id, `${c.systemName} ${c.tableName}.${c.columnName} (${c.dataType || 'type not recorded'})`]),
+    );
     const input = {
       story: {
         ref: story.refCode,
@@ -1192,12 +1502,19 @@ export const DELIVERY_OPS = {
         name: f.name,
         dataType: f.dataType,
         source: f.source,
-        mappedColumns: context.columnMappings.filter((m) => m.fieldId === f.id).map((m) => columnName.get(m.columnId) ?? '').filter(Boolean),
+        mappedColumns: context.columnMappings
+          .filter((m) => m.fieldId === f.id)
+          .map((m) => columnName.get(m.columnId) ?? '')
+          .filter(Boolean),
       })),
       validationRules: rules.map((r) => ({ ref: r.refCode, fieldRef: fieldRef.get(r.fieldId) ?? '', statement: r.statement })),
-      businessRules: context.businessRules.filter((r) => story.businessRuleIds.includes(r.id)).map((r) => ({ ref: r.refCode, statement: r.statement })),
+      businessRules: context.businessRules
+        .filter((r) => story.businessRuleIds.includes(r.id))
+        .map((r) => ({ ref: r.refCode, statement: r.statement })),
       knownColumns: [...columnName.values()],
-      existingTechnicalStories: stories.filter((s) => s.implementsIds.includes(storyId)).map((s) => ({ ref: s.refCode, title: s.title })),
+      existingTechnicalStories: stories
+        .filter((s) => s.implementsIds.includes(storyId))
+        .map((s) => ({ ref: s.refCode, title: s.title })),
     };
     const result = await ctx.ai.run(TECHNICAL_STORY_TASK, input, { projectId: story.projectId, subjectId: storyId }, ctx.signal);
     const fieldByRef = new Map(context.fields.map((f) => [f.refCode, f.id]));
@@ -1231,56 +1548,77 @@ export const DELIVERY_OPS = {
     };
   }),
 
-  generateScenarios: op(z.strictObject({ projectId: Id, storyIds: Ids.min(1) }), async (ctx, { projectId, storyIds }): Promise<ScenarioProposal> => {
-    await requirePermission(ctx, projectId, 'editScenarios', 'Only Business Analysts and Administrators can write test scenarios');
-    const [context, stories, scenarios] = await Promise.all([ctx.store.context(projectId), ctx.store.list('stories', projectId), ctx.store.list('scenarios', projectId)]);
-    const functional = stories.filter((s) => storyIds.includes(s.id) && s.storyType === 'functional');
-    if (functional.length === 0) fail('Choose at least one functional story', 'PF422');
-    const fIds = new Set(functional.map((s) => s.id));
-    const technical = stories.filter((s) => s.storyType === 'technical' && (storyIds.includes(s.id) || s.implementsIds.some((id) => fIds.has(id))));
-    const refById = new Map(stories.map((s) => [s.id, s.refCode]));
-    const processIds = dedupe(functional.flatMap((s) => s.activities.map((a) => a.processId)));
-    const process = context.processes.find((p) => p.id === processIds[0]);
-    const input = {
-      processName: process?.name ?? '',
-      stories: [...functional, ...technical].map((s) => ({
-        ref: s.refCode,
-        type: s.storyType,
-        title: s.title,
-        behaviour: s.behaviour.map((b) => b.text),
-        alternativeFlows: s.alternativeFlows.map((b) => b.text),
-        acceptanceCriteria: s.acceptanceCriteria.map((b) => b.text),
-        implements: s.implementsIds.map((id) => refById.get(id) ?? ''),
-      })),
-      businessRules: context.businessRules.filter((r) => functional.some((s) => s.businessRuleIds.includes(r.id))).map((r) => ({ ref: r.refCode, statement: r.statement })),
-      fields: context.fields.filter((f) => functional.some((s) => s.fieldIds.includes(f.id))).map((f) => ({ ref: f.refCode, name: f.name, dataType: f.dataType })),
-      existingScenarios: scenarios.filter((sc) => sc.storyIds.some((id) => technical.some((t) => t.id === id))).map((sc) => ({ ref: sc.refCode, title: sc.title })),
-    };
-    const result = await ctx.ai.run(SCENARIO_GENERATION_TASK, input, { projectId, subjectId: functional[0]!.id }, ctx.signal);
-    const idByRef = new Map(stories.map((s) => [s.refCode, s.id]));
-    const activities = [...new Map(functional.flatMap((s) => s.activities).map((a) => [activityKey(a), a])).values()];
-    return {
-      runId: result.runId,
-      model: result.model,
-      questions: result.value.questions,
-      scenarios: result.value.scenarios.map((sc) => ({
-        title: sc.title,
-        scenarioType: sc.scenarioType,
-        description: sc.description,
-        processId: process?.id ?? null,
-        activities,
-        preconditions: toItems(ctx, sc.preconditions),
-        steps: sc.steps.map((st) => ({ id: ctx.newId(), ...st })),
-        storyIds: dedupe(sc.storyRefs.map((r) => idByRef.get(r)!)),
-        prerequisites: sc.prerequisites,
-      })),
-    };
-  }),
+  generateScenarios: op(
+    z.strictObject({ projectId: Id, storyIds: Ids.min(1) }),
+    async (ctx, { projectId, storyIds }): Promise<ScenarioProposal> => {
+      await requirePermission(
+        ctx,
+        projectId,
+        'editScenarios',
+        'Only Business Analysts and Administrators can write test scenarios',
+      );
+      const [context, stories, scenarios] = await Promise.all([
+        ctx.store.context(projectId),
+        ctx.store.list('stories', projectId),
+        ctx.store.list('scenarios', projectId),
+      ]);
+      const functional = stories.filter((s) => storyIds.includes(s.id) && s.storyType === 'functional');
+      if (functional.length === 0) fail('Choose at least one functional story', 'PF422');
+      const fIds = new Set(functional.map((s) => s.id));
+      const technical = stories.filter(
+        (s) => s.storyType === 'technical' && (storyIds.includes(s.id) || s.implementsIds.some((id) => fIds.has(id))),
+      );
+      const refById = new Map(stories.map((s) => [s.id, s.refCode]));
+      const processIds = dedupe(functional.flatMap((s) => s.activities.map((a) => a.processId)));
+      const process = context.processes.find((p) => p.id === processIds[0]);
+      const input = {
+        processName: process?.name ?? '',
+        stories: [...functional, ...technical].map((s) => ({
+          ref: s.refCode,
+          type: s.storyType,
+          title: s.title,
+          behaviour: s.behaviour.map((b) => b.text),
+          alternativeFlows: s.alternativeFlows.map((b) => b.text),
+          acceptanceCriteria: s.acceptanceCriteria.map((b) => b.text),
+          implements: s.implementsIds.map((id) => refById.get(id) ?? ''),
+        })),
+        businessRules: context.businessRules
+          .filter((r) => functional.some((s) => s.businessRuleIds.includes(r.id)))
+          .map((r) => ({ ref: r.refCode, statement: r.statement })),
+        fields: context.fields
+          .filter((f) => functional.some((s) => s.fieldIds.includes(f.id)))
+          .map((f) => ({ ref: f.refCode, name: f.name, dataType: f.dataType })),
+        existingScenarios: scenarios
+          .filter((sc) => sc.storyIds.some((id) => technical.some((t) => t.id === id)))
+          .map((sc) => ({ ref: sc.refCode, title: sc.title })),
+      };
+      const result = await ctx.ai.run(SCENARIO_GENERATION_TASK, input, { projectId, subjectId: functional[0]!.id }, ctx.signal);
+      const idByRef = new Map(stories.map((s) => [s.refCode, s.id]));
+      const activities = [...new Map(functional.flatMap((s) => s.activities).map((a) => [activityKey(a), a])).values()];
+      return {
+        runId: result.runId,
+        model: result.model,
+        questions: result.value.questions,
+        scenarios: result.value.scenarios.map((sc) => ({
+          title: sc.title,
+          scenarioType: sc.scenarioType,
+          description: sc.description,
+          processId: process?.id ?? null,
+          activities,
+          preconditions: toItems(ctx, sc.preconditions),
+          steps: sc.steps.map((st) => ({ id: ctx.newId(), ...st })),
+          storyIds: dedupe(sc.storyRefs.map((r) => idByRef.get(r)!)),
+          prerequisites: sc.prerequisites,
+        })),
+      };
+    },
+  ),
 
   refineStory: op(z.strictObject({ storyId: Id }), async (ctx, { storyId }): Promise<RefinementProposal> => {
     const story = await load(ctx, 'stories', storyId);
     const role = await roleIn(ctx, story.projectId);
-    if (!canEditStory(role, story) && !canDeliver(role, 'reviewStory')) fail('You do not have permission to refine this story', '42501');
+    if (!canEditStory(role, story) && !canDeliver(role, 'reviewStory'))
+      fail('You do not have permission to refine this story', '42501');
     const context = await ctx.store.context(story.projectId);
     const index = activityIndex(context);
     const input = {
@@ -1298,53 +1636,105 @@ export const DELIVERY_OPS = {
       },
       activities: story.activities.map((a) => index.get(activityKey(a))?.label ?? '').filter(Boolean),
       fields: context.fields.filter((f) => story.fieldIds.includes(f.id)).map((f) => ({ ref: f.refCode, name: f.name })),
-      businessRules: context.businessRules.filter((r) => story.businessRuleIds.includes(r.id)).map((r) => ({ ref: r.refCode, statement: r.statement })),
+      businessRules: context.businessRules
+        .filter((r) => story.businessRuleIds.includes(r.id))
+        .map((r) => ({ ref: r.refCode, statement: r.statement })),
     };
     const result = await ctx.ai.run(REFINEMENT_TASK, input, { projectId: story.projectId, subjectId: storyId }, ctx.signal);
     return { runId: result.runId, model: result.model, refinement: result.value };
   }),
 
-  analyseChangeImpact: op(z.strictObject({ processId: Id, fromVersionId: Id.optional(), toVersionId: Id.optional(), useAi: z.boolean().default(true) }), async (ctx, input): Promise<ChangeImpactResult> => {
-    const projects = await findProcessProject(ctx, input.processId);
-    await requirePermission(ctx, projects.projectId, 'runInsights', 'Only Business Analysts, Product Owners and Administrators can analyse change impact');
-    const { context } = projects;
-    const process = context.processes.find((p) => p.id === input.processId)!;
-    const versions = context.versions.filter((v) => v.process_id === input.processId).sort((a, b) => b.version_number - a.version_number);
-    const to = input.toVersionId ? versions.find((v) => v.id === input.toVersionId) : currentVersion(context, input.processId);
-    const from = input.fromVersionId
-      ? versions.find((v) => v.id === input.fromVersionId)
-      : versions.find((v) => to && v.version_number < to.version_number && v.status !== 'draft');
-    if (!to || !from) {
-      return { fromVersion: from ? { id: from.id, versionNumber: from.version_number } : null, toVersion: to ? { id: to.id, versionNumber: to.version_number } : null, impact: { changes: [], affectedActivities: [], affectedFieldIds: [], items: [] }, assessment: null, runId: null, model: null };
-    }
-    const snapshot = await loadSnapshot(ctx, projects.projectId);
-    const impact = analyseChangeImpact(context, snapshot, input.processId, from.id, to.id);
-    let assessment: ChangeImpactAssessment | null = null;
-    let runId: string | null = null;
-    let model: string | null = null;
-    if (input.useAi && impact.items.length > 0) {
-      const result = await ctx.ai.run(
-        CHANGE_IMPACT_TASK,
-        { processName: process.name, changes: impact.changes.map((c) => c.description), items: impact.items.map((i) => ({ ref: i.refCode, type: i.type, title: i.title, status: i.status, reasons: i.reasons })) },
-        { projectId: projects.projectId, subjectId: to.id },
-        ctx.signal,
+  analyseChangeImpact: op(
+    z.strictObject({ processId: Id, fromVersionId: Id.optional(), toVersionId: Id.optional(), useAi: z.boolean().default(true) }),
+    async (ctx, input): Promise<ChangeImpactResult> => {
+      const projects = await findProcessProject(ctx, input.processId);
+      await requirePermission(
+        ctx,
+        projects.projectId,
+        'runInsights',
+        'Only Business Analysts, Product Owners and Administrators can analyse change impact',
       );
-      assessment = result.value;
-      runId = result.runId;
-      model = result.model;
-    }
-    return { fromVersion: { id: from.id, versionNumber: from.version_number }, toVersion: { id: to.id, versionNumber: to.version_number }, impact, assessment, runId, model };
-  }),
+      const { context } = projects;
+      const process = context.processes.find((p) => p.id === input.processId)!;
+      const versions = context.versions
+        .filter((v) => v.process_id === input.processId)
+        .sort((a, b) => b.version_number - a.version_number);
+      const to = input.toVersionId ? versions.find((v) => v.id === input.toVersionId) : currentVersion(context, input.processId);
+      const from = input.fromVersionId
+        ? versions.find((v) => v.id === input.fromVersionId)
+        : versions.find((v) => to && v.version_number < to.version_number && v.status !== 'draft');
+      if (!to || !from) {
+        return {
+          fromVersion: from ? { id: from.id, versionNumber: from.version_number } : null,
+          toVersion: to ? { id: to.id, versionNumber: to.version_number } : null,
+          impact: { changes: [], affectedActivities: [], affectedFieldIds: [], items: [] },
+          assessment: null,
+          runId: null,
+          model: null,
+        };
+      }
+      const snapshot = await loadSnapshot(ctx, projects.projectId);
+      const impact = analyseChangeImpact(context, snapshot, input.processId, from.id, to.id);
+      let assessment: ChangeImpactAssessment | null = null;
+      let runId: string | null = null;
+      let model: string | null = null;
+      if (input.useAi && impact.items.length > 0) {
+        const result = await ctx.ai.run(
+          CHANGE_IMPACT_TASK,
+          {
+            processName: process.name,
+            changes: impact.changes.map((c) => c.description),
+            items: impact.items.map((i) => ({
+              ref: i.refCode,
+              type: i.type,
+              title: i.title,
+              status: i.status,
+              reasons: i.reasons,
+            })),
+          },
+          { projectId: projects.projectId, subjectId: to.id },
+          ctx.signal,
+        );
+        assessment = result.value;
+        runId = result.runId;
+        model = result.model;
+      }
+      return {
+        fromVersion: { id: from.id, versionNumber: from.version_number },
+        toVersion: { id: to.id, versionNumber: to.version_number },
+        impact,
+        assessment,
+        runId,
+        model,
+      };
+    },
+  ),
 
   applyChangeImpact: op(
     z.strictObject({
       projectId: Id,
       processId: Id,
       summary: LongText,
-      items: z.array(z.strictObject({ id: Id, type: z.enum(['functional_story', 'technical_story', 'scenario']), refCode: ShortText, reason: z.string().max(2000), impact: z.enum(['high', 'medium', 'low']) })).min(1).max(200),
+      items: z
+        .array(
+          z.strictObject({
+            id: Id,
+            type: z.enum(['functional_story', 'technical_story', 'scenario']),
+            refCode: ShortText,
+            reason: z.string().max(2000),
+            impact: z.enum(['high', 'medium', 'low']),
+          }),
+        )
+        .min(1)
+        .max(200),
     }),
     async (ctx, { projectId, processId, summary, items }) => {
-      await requirePermission(ctx, projectId, 'runInsights', 'Only Business Analysts, Product Owners and Administrators can apply change impact');
+      await requirePermission(
+        ctx,
+        projectId,
+        'runInsights',
+        'Only Business Analysts, Product Owners and Administrators can apply change impact',
+      );
       // Flags the items for review. Approved content itself is never changed here.
       for (const item of items) {
         if (item.type === 'scenario') {
@@ -1359,7 +1749,11 @@ export const DELIVERY_OPS = {
           await recordEvent(ctx, projectId, 'story', story.id, 'flag', { to: 'review required', body: item.reason });
         }
       }
-      const highest = items.some((i) => i.impact === 'high') ? 'high' : items.some((i) => i.impact === 'medium') ? 'medium' : 'low';
+      const highest = items.some((i) => i.impact === 'high')
+        ? 'high'
+        : items.some((i) => i.impact === 'medium')
+          ? 'medium'
+          : 'low';
       const insight: Insight = {
         id: ctx.newId(),
         projectId,
@@ -1382,7 +1776,12 @@ export const DELIVERY_OPS = {
 
   suggestImprovements: op(z.strictObject({ processId: Id }), async (ctx, { processId }) => {
     const { projectId, context } = await findProcessProject(ctx, processId);
-    await requirePermission(ctx, projectId, 'runInsights', 'Only Business Analysts, Product Owners and Administrators can request recommendations');
+    await requirePermission(
+      ctx,
+      projectId,
+      'runInsights',
+      'Only Business Analysts, Product Owners and Administrators can request recommendations',
+    );
     const process = context.processes.find((p) => p.id === processId)!;
     const version = currentVersion(context, processId) ?? fail('The process has no map yet.', 'PF422');
     const snapshot = await loadSnapshot(ctx, projectId);
@@ -1390,13 +1789,16 @@ export const DELIVERY_OPS = {
     const idByKey = new Map(nodes.map((n, i) => [n.element_key, `A${i + 1}`]));
     const actors = new Map(context.actors.map((a) => [a.id, a.name]));
     const edges = context.edges.filter((e) => e.version_id === version.id);
-    const storiesFor = (key: string) => snapshot.stories.filter((s) => s.activities.some((a) => a.processId === processId && a.nodeKey === key)).map((s) => s.id);
+    const storiesFor = (key: string) =>
+      snapshot.stories.filter((s) => s.activities.some((a) => a.processId === processId && a.nodeKey === key)).map((s) => s.id);
     const input = {
       processName: process.name,
       processDescription: version.description,
       activities: nodes.map((n) => {
         const storyIds = new Set(storiesFor(n.element_key));
-        const scenarioIds = new Set(snapshot.scenarios.filter((sc) => sc.activities.some((a) => a.nodeKey === n.element_key)).map((sc) => sc.id));
+        const scenarioIds = new Set(
+          snapshot.scenarios.filter((sc) => sc.activities.some((a) => a.nodeKey === n.element_key)).map((sc) => sc.id),
+        );
         return {
           id: idByKey.get(n.element_key)!,
           refCode: n.ref_code,
@@ -1404,8 +1806,12 @@ export const DELIVERY_OPS = {
           label: n.label,
           actor: n.actor_id ? (actors.get(n.actor_id) ?? null) : null,
           next: edges.filter((e) => e.source_key === n.element_key).map((e) => idByKey.get(e.target_key) ?? 'end'),
-          inputCount: context.activityFields.filter((f) => f.version_id === version.id && f.node_key === n.element_key && f.direction === 'input').length,
-          defects: snapshot.defects.filter((d) => d.storyIds.some((id) => storyIds.has(id)) || (d.scenarioId && scenarioIds.has(d.scenarioId))).length,
+          inputCount: context.activityFields.filter(
+            (f) => f.version_id === version.id && f.node_key === n.element_key && f.direction === 'input',
+          ).length,
+          defects: snapshot.defects.filter(
+            (d) => d.storyIds.some((id) => storyIds.has(id)) || (d.scenarioId && scenarioIds.has(d.scenarioId)),
+          ).length,
           failedTests: snapshot.executions.filter((e) => scenarioIds.has(e.scenarioId) && e.status === 'failed').length,
         };
       }),
@@ -1435,13 +1841,26 @@ export const DELIVERY_OPS = {
     return { runId: result.runId, model: result.model, insights: created };
   }),
 
-  decideInsight: op(z.strictObject({ insightId: Id, status: z.enum(['accepted', 'dismissed', 'open']) }), async (ctx, { insightId, status }) => {
-    const insight = await load(ctx, 'insights', insightId);
-    await requirePermission(ctx, insight.projectId, 'runInsights', 'Only Business Analysts, Product Owners and Administrators can decide on recommendations');
-    const next: Insight = { ...insight, status, decidedBy: status === 'open' ? null : ctx.userId, decidedAt: status === 'open' ? null : ctx.now() };
-    await ctx.store.update('insights', next);
-    return next;
-  }),
+  decideInsight: op(
+    z.strictObject({ insightId: Id, status: z.enum(['accepted', 'dismissed', 'open']) }),
+    async (ctx, { insightId, status }) => {
+      const insight = await load(ctx, 'insights', insightId);
+      await requirePermission(
+        ctx,
+        insight.projectId,
+        'runInsights',
+        'Only Business Analysts, Product Owners and Administrators can decide on recommendations',
+      );
+      const next: Insight = {
+        ...insight,
+        status,
+        decidedBy: status === 'open' ? null : ctx.userId,
+        decidedAt: status === 'open' ? null : ctx.now(),
+      };
+      await ctx.store.update('insights', next);
+      return next;
+    },
+  ),
 };
 
 async function findProcessProject(ctx: OpContext, processId: string): Promise<{ projectId: string; context: ProjectContext }> {
@@ -1457,7 +1876,9 @@ export type DeliveryOpInput<K extends DeliveryOpName> = z.input<DeliveryOps[K]['
 export type DeliveryOpResult<K extends DeliveryOpName> = Awaited<ReturnType<DeliveryOps[K]['run']>>;
 
 /** A client for the delivery operations, as the web app sees them. */
-export type DeliveryClient = { [K in DeliveryOpName]: (input: DeliveryOpInput<K>, signal?: AbortSignal) => Promise<DeliveryOpResult<K>> };
+export type DeliveryClient = {
+  [K in DeliveryOpName]: (input: DeliveryOpInput<K>, signal?: AbortSignal) => Promise<DeliveryOpResult<K>>;
+};
 
 /** Validates an operation's input and runs it. Unknown operations and invalid input are rejected. */
 export async function runDeliveryOp(ctx: OpContext, name: string, input: unknown): Promise<unknown> {

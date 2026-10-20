@@ -12,7 +12,13 @@ function runner(fail?: StructuredOutcome<unknown>): StructuredRunner {
       const properties = (task.schema as { properties?: Record<string, unknown> }).properties ?? {};
       const parsed = task.parse(JSON.stringify(deliveryAnswerFor(properties, task.user)));
       if (!parsed.ok) throw new Error(parsed.errors.join('; '));
-      return { ok: true, value: parsed.value, model: 'claude-opus-5-5', promptVersion: task.promptVersion, usage: { inputTokens: 1, outputTokens: 1, attempts: 1 } };
+      return {
+        ok: true,
+        value: parsed.value,
+        model: 'claude-opus-5-5',
+        promptVersion: task.promptVersion,
+        usage: { inputTokens: 1, outputTokens: 1, attempts: 1 },
+      };
     }) as StructuredRunner['run'],
   };
 }
@@ -36,7 +42,12 @@ function setup(opts: { store?: boolean; fail?: StructuredOutcome<unknown> } = {}
     deliveryStore: opts.store === false ? undefined : store,
   });
   const call = (user: string | null, op: string, body: unknown) =>
-    app.inject({ method: 'POST', url: `/api/delivery/${op}`, headers: user ? { authorization: `Bearer ${user}` } : {}, payload: body as object });
+    app.inject({
+      method: 'POST',
+      url: `/api/delivery/${op}`,
+      headers: user ? { authorization: `Bearer ${user}` } : {},
+      payload: body as object,
+    });
   return { h, app, call, aiRuns };
 }
 
@@ -52,12 +63,20 @@ describe('POST /api/delivery/:op', () => {
 
   it('runs operations with the caller as the actor and maps rule failures to HTTP statuses', async () => {
     const { h, call } = setup();
-    const created = await call(USERS.ba, 'createStory', { projectId: h.projectId, storyType: 'functional', content: { title: 'Submit request' } });
+    const created = await call(USERS.ba, 'createStory', {
+      projectId: h.projectId,
+      storyType: 'functional',
+      content: { title: 'Submit request' },
+    });
     expect(created.statusCode).toBe(200);
     const story = created.json().result;
     expect(story).toMatchObject({ refCode: 'US-001', status: 'draft', createdBy: USERS.ba });
 
-    const forbidden = await call(USERS.dev, 'createStory', { projectId: h.projectId, storyType: 'functional', content: { title: 'X' } });
+    const forbidden = await call(USERS.dev, 'createStory', {
+      projectId: h.projectId,
+      storyType: 'functional',
+      content: { title: 'X' },
+    });
     expect([forbidden.statusCode, forbidden.json().error.code]).toEqual([403, '42501']);
     const outsider = await call(USERS.outsider, 'snapshot', { projectId: h.projectId });
     expect([outsider.statusCode, outsider.json().error.code]).toEqual([404, 'P0002']);
@@ -79,13 +98,26 @@ describe('POST /api/delivery/:op', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().result.stories).toHaveLength(3);
     expect(aiRuns).toHaveLength(1);
-    expect(aiRuns[0]).toMatchObject({ task: 'story_generation', userId: USERS.ba, succeeded: true, promptVersion: 'story-generation/v1' });
+    expect(aiRuns[0]).toMatchObject({
+      task: 'story_generation',
+      userId: USERS.ba,
+      succeeded: true,
+      promptVersion: 'story-generation/v1',
+    });
     expect(aiRuns[0]!.input).toContain('<context>');
   });
 
   it('reports AI failures with the failure kind', async () => {
     const { h, call, aiRuns } = setup({
-      fail: { ok: false, kind: 'refusal', message: 'Claude declined.', model: 'm', promptVersion: 'v', usage: { inputTokens: 1, outputTokens: 0, attempts: 1 }, rawOutput: null },
+      fail: {
+        ok: false,
+        kind: 'refusal',
+        message: 'Claude declined.',
+        model: 'm',
+        promptVersion: 'v',
+        usage: { inputTokens: 1, outputTokens: 0, attempts: 1 },
+        rawOutput: null,
+      },
     });
     const res = await call(USERS.ba, 'generateStories', { projectId: h.projectId, processId: h.processId });
     expect([res.statusCode, res.json().error.code]).toEqual([422, 'ai_refusal']);
@@ -95,8 +127,20 @@ describe('POST /api/delivery/:op', () => {
 
 describe('column mapping', () => {
   it('maps top-level keys only', () => {
-    const row = toColumns({ refCode: 'US-1', acceptanceCriteria: [{ id: 'a', text: 'x' }], activities: [{ processId: 'p', nodeKey: 'n' }] });
-    expect(row).toEqual({ ref_code: 'US-1', acceptance_criteria: [{ id: 'a', text: 'x' }], activities: [{ processId: 'p', nodeKey: 'n' }] });
-    expect(fromColumns(row)).toEqual({ refCode: 'US-1', acceptanceCriteria: [{ id: 'a', text: 'x' }], activities: [{ processId: 'p', nodeKey: 'n' }] });
+    const row = toColumns({
+      refCode: 'US-1',
+      acceptanceCriteria: [{ id: 'a', text: 'x' }],
+      activities: [{ processId: 'p', nodeKey: 'n' }],
+    });
+    expect(row).toEqual({
+      ref_code: 'US-1',
+      acceptance_criteria: [{ id: 'a', text: 'x' }],
+      activities: [{ processId: 'p', nodeKey: 'n' }],
+    });
+    expect(fromColumns(row)).toEqual({
+      refCode: 'US-1',
+      acceptanceCriteria: [{ id: 'a', text: 'x' }],
+      activities: [{ processId: 'p', nodeKey: 'n' }],
+    });
   });
 });

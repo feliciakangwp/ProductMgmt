@@ -28,7 +28,10 @@ interface SampleError {
   code: string;
   message: string;
 }
-type SampleJson = (input: string, options?: { modelTier?: 'default' | 'complex' | 'quick'; signal?: AbortSignal }) => Promise<unknown>;
+type SampleJson = (
+  input: string,
+  options?: { modelTier?: 'default' | 'complex' | 'quick'; signal?: AbortSignal },
+) => Promise<unknown>;
 interface ClaudeRuntime {
   use(name: 'sample'): Promise<{ json: SampleJson } | null>;
 }
@@ -106,7 +109,11 @@ function sampleAnswer(schema: Record<string, unknown>, user: string): unknown {
   return DEBT_WRITE_OFF_ANALYSIS;
 }
 
-async function askOwnKey(key: string, args: { system: string; user: string; schema: Record<string, unknown> }, signal?: AbortSignal) {
+async function askOwnKey(
+  key: string,
+  args: { system: string; user: string; schema: Record<string, unknown> },
+  signal?: AbortSignal,
+) {
   const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
   try {
     const response = await client.beta.messages.create(
@@ -121,15 +128,20 @@ async function askOwnKey(key: string, args: { system: string; user: string; sche
       },
       { signal },
     );
-    if (response.stop_reason === 'refusal') throw new AppError('Claude declined this request. Review the text and try again.', 'ai_refusal');
-    if (response.stop_reason === 'max_tokens') throw new AppError('The request is too large to answer in one pass. Ask for less at a time.', 'ai_truncated');
+    if (response.stop_reason === 'refusal')
+      throw new AppError('Claude declined this request. Review the text and try again.', 'ai_refusal');
+    if (response.stop_reason === 'max_tokens')
+      throw new AppError('The request is too large to answer in one pass. Ask for less at a time.', 'ai_truncated');
     return response.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
   } catch (err) {
     if (err instanceof AppError) throw err;
     if (err instanceof Anthropic.APIUserAbortError) throw new AppError('Cancelled.', 'cancelled');
-    if (err instanceof Anthropic.AuthenticationError) throw new AppError('Anthropic rejected the API key. Check it in AI settings.', 'ai_configuration');
-    if (err instanceof Anthropic.RateLimitError) throw new AppError('The AI service is busy. Wait a minute and try again.', 'ai_rate_limited');
-    if (err instanceof Anthropic.APIError) throw new AppError(`The AI service returned an error (${err.status ?? 'network'}). Try again.`, 'ai_unavailable');
+    if (err instanceof Anthropic.AuthenticationError)
+      throw new AppError('Anthropic rejected the API key. Check it in AI settings.', 'ai_configuration');
+    if (err instanceof Anthropic.RateLimitError)
+      throw new AppError('The AI service is busy. Wait a minute and try again.', 'ai_rate_limited');
+    if (err instanceof Anthropic.APIError)
+      throw new AppError(`The AI service returned an error (${err.status ?? 'network'}). Try again.`, 'ai_unavailable');
     throw new AppError('Could not reach the AI service. Try again.', 'ai_unavailable');
   }
 }
@@ -168,5 +180,8 @@ export async function runStructured<T>(args: {
     lastErrors = parsed.errors;
     message = buildRetryMessage({ original: args.user, invalidOutput: raw, errors: parsed.errors });
   }
-  throw new AppError(`Claude returned an answer that failed validation (${lastErrors.slice(0, 3).join('; ')}). Try again.`, 'ai_invalid_output');
+  throw new AppError(
+    `Claude returned an answer that failed validation (${lastErrors.slice(0, 3).join('; ')}). Try again.`,
+    'ai_invalid_output',
+  );
 }

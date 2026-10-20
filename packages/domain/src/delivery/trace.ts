@@ -104,7 +104,9 @@ export function traceActivity(ctx: ProjectContext, snapshot: DeliverySnapshot, r
   const uses = ctx.activityFields.filter((f) => f.version_id === activity.versionId && f.node_key === ref.nodeKey);
   const fieldIds = new Set(uses.map((u) => u.field_id));
   const key = activityKey(ref);
-  const functional = snapshot.stories.filter((s) => s.storyType === 'functional' && s.activities.some((a) => activityKey(a) === key));
+  const functional = snapshot.stories.filter(
+    (s) => s.storyType === 'functional' && s.activities.some((a) => activityKey(a) === key),
+  );
   const technical = [
     ...new Map(
       [
@@ -126,7 +128,9 @@ export function traceActivity(ctx: ProjectContext, snapshot: DeliverySnapshot, r
       .map((u) => ({ field: fieldsById.get(u.field_id)!, mandatory: u.mandatory, condition: u.mandatory_condition })),
     outputs: uses.filter((u) => u.direction === 'output' && fieldsById.has(u.field_id)).map((u) => fieldsById.get(u.field_id)!),
     validationRules: ctx.validationRules.filter((r) => fieldIds.has(r.fieldId)),
-    businessRules: ctx.businessRules.filter((b) => b.activities.some((a) => a.processId === ref.processId && a.nodeKey === ref.nodeKey)),
+    businessRules: ctx.businessRules.filter((b) =>
+      b.activities.some((a) => a.processId === ref.processId && a.nodeKey === ref.nodeKey),
+    ),
     functionalStories: functional,
     technicalStories: technical,
     scenarios: scenarios.map((scenario) => {
@@ -140,7 +144,8 @@ export function traceActivity(ctx: ProjectContext, snapshot: DeliverySnapshot, r
       };
     }),
     openDefects: snapshot.defects.filter(
-      (d) => d.status !== 'closed' && ((d.scenarioId && scenarioIds.has(d.scenarioId)) || d.storyIds.some((id) => storyIds.has(id))),
+      (d) =>
+        d.status !== 'closed' && ((d.scenarioId && scenarioIds.has(d.scenarioId)) || d.storyIds.some((id) => storyIds.has(id))),
     ),
   };
 }
@@ -189,19 +194,36 @@ export function consistencyChecks(ctx: ProjectContext, snapshot: DeliverySnapsho
   for (const s of functional) {
     if (s.status === 'draft') continue;
     if (implementingStories(stories, new Set([s.id])).length === 0) {
-      add({ severity: 'warning', category: 'coverage', message: `${s.refCode} has no technical story implementing it.`, subjects: [s.refCode] });
+      add({
+        severity: 'warning',
+        category: 'coverage',
+        message: `${s.refCode} has no technical story implementing it.`,
+        subjects: [s.refCode],
+      });
     }
     const tested = snapshot.scenarios.some(
-      (sc) => sc.storyIds.some((id) => id === s.id || storyById.get(id)?.implementsIds.includes(s.id)) || sc.activities.some((a) => s.activities.some((b) => activityKey(a) === activityKey(b))),
+      (sc) =>
+        sc.storyIds.some((id) => id === s.id || storyById.get(id)?.implementsIds.includes(s.id)) ||
+        sc.activities.some((a) => s.activities.some((b) => activityKey(a) === activityKey(b))),
     );
     if (!tested) {
-      add({ severity: 'info', category: 'coverage', message: `${s.refCode} is not covered by any business test scenario.`, subjects: [s.refCode] });
+      add({
+        severity: 'info',
+        category: 'coverage',
+        message: `${s.refCode} is not covered by any business test scenario.`,
+        subjects: [s.refCode],
+      });
     }
   }
   const linkedRules = new Set(stories.flatMap((s) => s.businessRuleIds));
   for (const rule of ctx.businessRules) {
     if (rule.status === 'approved' && !linkedRules.has(rule.id)) {
-      add({ severity: 'warning', category: 'coverage', message: `Approved business rule ${rule.refCode} "${rule.title}" is not referenced by any story.`, subjects: [rule.refCode] });
+      add({
+        severity: 'warning',
+        category: 'coverage',
+        message: `Approved business rule ${rule.refCode} "${rule.title}" is not referenced by any story.`,
+        subjects: [rule.refCode],
+      });
     }
   }
 
@@ -209,49 +231,102 @@ export function consistencyChecks(ctx: ProjectContext, snapshot: DeliverySnapsho
   for (const s of stories) {
     for (const a of s.activities) {
       if (!index.has(activityKey(a))) {
-        add({ severity: 'error', category: 'links', message: `${s.refCode} is linked to an activity that is no longer in the process map.`, subjects: [s.refCode] });
+        add({
+          severity: 'error',
+          category: 'links',
+          message: `${s.refCode} is linked to an activity that is no longer in the process map.`,
+          subjects: [s.refCode],
+        });
       }
     }
     const activityFieldIds = new Set(
       s.activities.flatMap((a) => {
         const info = index.get(activityKey(a));
-        return info ? ctx.activityFields.filter((f) => f.version_id === info.versionId && f.node_key === a.nodeKey).map((f) => f.field_id) : [];
+        return info
+          ? ctx.activityFields.filter((f) => f.version_id === info.versionId && f.node_key === a.nodeKey).map((f) => f.field_id)
+          : [];
       }),
     );
     for (const id of s.fieldIds) {
       const field = fieldsById.get(id);
       if (!field) {
-        add({ severity: 'error', category: 'links', message: `${s.refCode} refers to a field that was deleted.`, subjects: [s.refCode] });
+        add({
+          severity: 'error',
+          category: 'links',
+          message: `${s.refCode} refers to a field that was deleted.`,
+          subjects: [s.refCode],
+        });
       } else if (field.status === 'deprecated') {
-        add({ severity: 'warning', category: 'links', message: `${s.refCode} uses deprecated field ${field.refCode} ${field.name}.`, subjects: [s.refCode, field.refCode] });
+        add({
+          severity: 'warning',
+          category: 'links',
+          message: `${s.refCode} uses deprecated field ${field.refCode} ${field.name}.`,
+          subjects: [s.refCode, field.refCode],
+        });
       } else if (s.storyType === 'functional' && s.activities.length > 0 && !activityFieldIds.has(id)) {
-        add({ severity: 'info', category: 'links', message: `${s.refCode} uses ${field.refCode} ${field.name}, which its activities do not list as an input or output.`, subjects: [s.refCode, field.refCode] });
+        add({
+          severity: 'info',
+          category: 'links',
+          message: `${s.refCode} uses ${field.refCode} ${field.name}, which its activities do not list as an input or output.`,
+          subjects: [s.refCode, field.refCode],
+        });
       }
     }
     if (s.storyType === 'technical' && s.implementsIds.length === 0) {
-      add({ severity: 'info', category: 'links', message: `${s.refCode} does not implement any functional story.`, subjects: [s.refCode] });
+      add({
+        severity: 'info',
+        category: 'links',
+        message: `${s.refCode} does not implement any functional story.`,
+        subjects: [s.refCode],
+      });
     }
     for (const id of s.dependsOnIds) {
       const dep = storyById.get(id);
-      if (dep && dep.backlogRank > s.backlogRank && s.status === 'in_backlog' && dep.status === 'in_backlog' && dep.workStatus !== 'completed') {
-        add({ severity: 'info', category: 'planning', message: `${s.refCode} is ranked above ${dep.refCode}, which it depends on.`, subjects: [s.refCode, dep.refCode] });
+      if (
+        dep &&
+        dep.backlogRank > s.backlogRank &&
+        s.status === 'in_backlog' &&
+        dep.status === 'in_backlog' &&
+        dep.workStatus !== 'completed'
+      ) {
+        add({
+          severity: 'info',
+          category: 'planning',
+          message: `${s.refCode} is ranked above ${dep.refCode}, which it depends on.`,
+          subjects: [s.refCode, dep.refCode],
+        });
       }
     }
   }
   for (const sc of snapshot.scenarios) {
     if (sc.storyIds.length === 0) {
-      add({ severity: 'warning', category: 'links', message: `${sc.refCode} is not linked to any technical story, so it can never become ready for UAT.`, subjects: [sc.refCode] });
+      add({
+        severity: 'warning',
+        category: 'links',
+        message: `${sc.refCode} is not linked to any technical story, so it can never become ready for UAT.`,
+        subjects: [sc.refCode],
+      });
     }
   }
 
   // Quality: testable wording.
   for (const s of stories) {
     if (s.acceptanceCriteria.length === 0) {
-      add({ severity: 'warning', category: 'quality', message: `${s.refCode} has no acceptance criteria.`, subjects: [s.refCode] });
+      add({
+        severity: 'warning',
+        category: 'quality',
+        message: `${s.refCode} has no acceptance criteria.`,
+        subjects: [s.refCode],
+      });
     }
     const vague = findVagueTerms(s.acceptanceCriteria.map((c) => c.text).join(' '));
     if (vague.length) {
-      add({ severity: 'warning', category: 'quality', message: `${s.refCode} acceptance criteria use vague wording (${vague.map((v) => `"${v}"`).join(', ')}).`, subjects: [s.refCode] });
+      add({
+        severity: 'warning',
+        category: 'quality',
+        message: `${s.refCode} acceptance criteria use vague wording (${vague.map((v) => `"${v}"`).join(', ')}).`,
+        subjects: [s.refCode],
+      });
     }
     if (s.storyType === 'technical' && s.status !== 'draft' && s.errorScenarios.length === 0) {
       add({ severity: 'info', category: 'quality', message: `${s.refCode} lists no error scenarios.`, subjects: [s.refCode] });
@@ -262,10 +337,20 @@ export function consistencyChecks(ctx: ProjectContext, snapshot: DeliverySnapsho
   const inSprint = new Set(snapshot.sprintItems.filter((i) => i.removedAt === null).map((i) => i.storyId));
   for (const s of stories) {
     if (inSprint.has(s.id) && (s.estimateHours === null || s.storyPoints === null)) {
-      add({ severity: 'warning', category: 'planning', message: `${s.refCode} is in a sprint without ${s.estimateHours === null ? 'an hours estimate' : 'story points'}.`, subjects: [s.refCode] });
+      add({
+        severity: 'warning',
+        category: 'planning',
+        message: `${s.refCode} is in a sprint without ${s.estimateHours === null ? 'an hours estimate' : 'story points'}.`,
+        subjects: [s.refCode],
+      });
     }
     if (s.reviewFlag) {
-      add({ severity: 'warning', category: 'planning', message: `${s.refCode} needs review after a process change: ${s.reviewFlag}`, subjects: [s.refCode] });
+      add({
+        severity: 'warning',
+        category: 'planning',
+        message: `${s.refCode} needs review after a process change: ${s.reviewFlag}`,
+        subjects: [s.refCode],
+      });
     }
   }
   return issues;
@@ -315,7 +400,8 @@ export function analyseChangeImpact(
 ): ChangeImpact {
   const nodesOf = (v: string) => new Map(ctx.nodes.filter((n) => n.version_id === v).map((n) => [n.element_key, n]));
   const edgesOf = (v: string) => ctx.edges.filter((e) => e.version_id === v);
-  const fieldsOf = (v: string) => new Map(ctx.activityFields.filter((f) => f.version_id === v).map((f) => [`${f.node_key}|${f.direction}|${f.field_id}`, f]));
+  const fieldsOf = (v: string) =>
+    new Map(ctx.activityFields.filter((f) => f.version_id === v).map((f) => [`${f.node_key}|${f.direction}|${f.field_id}`, f]));
   const before = nodesOf(fromVersionId);
   const after = nodesOf(toVersionId);
   const fieldName = (id: string) => {
@@ -330,7 +416,13 @@ export function analyseChangeImpact(
   for (const [key, node] of after) {
     const old = before.get(key);
     if (!old) {
-      changes.push({ kind: 'added', element: 'activity', ref: nodeName(node), nodeKey: key, description: `Added ${node.node_type} ${nodeName(node)}` });
+      changes.push({
+        kind: 'added',
+        element: 'activity',
+        ref: nodeName(node),
+        nodeKey: key,
+        description: `Added ${node.node_type} ${nodeName(node)}`,
+      });
       changedKeys.add(key);
     } else {
       const diffs: string[] = [];
@@ -339,14 +431,26 @@ export function analyseChangeImpact(
       if (old.actor_id !== node.actor_id) diffs.push('responsible actor changed');
       if (old.description !== node.description) diffs.push('description changed');
       if (diffs.length) {
-        changes.push({ kind: 'changed', element: 'activity', ref: nodeName(node), nodeKey: key, description: `${nodeName(node)}: ${diffs.join(', ')}` });
+        changes.push({
+          kind: 'changed',
+          element: 'activity',
+          ref: nodeName(node),
+          nodeKey: key,
+          description: `${nodeName(node)}: ${diffs.join(', ')}`,
+        });
         changedKeys.add(key);
       }
     }
   }
   for (const [key, node] of before) {
     if (!after.has(key)) {
-      changes.push({ kind: 'removed', element: 'activity', ref: nodeName(node), nodeKey: key, description: `Removed ${node.node_type} ${nodeName(node)}` });
+      changes.push({
+        kind: 'removed',
+        element: 'activity',
+        ref: nodeName(node),
+        nodeKey: key,
+        description: `Removed ${node.node_type} ${nodeName(node)}`,
+      });
       changedKeys.add(key);
     }
   }
@@ -354,10 +458,22 @@ export function analyseChangeImpact(
   const branchSig = (e: ProcessEdgeRow) => `${e.target_key}|${e.branch ?? ''}|${e.condition}|${e.label}`;
   for (const [key, node] of after) {
     if (node.node_type !== 'decision' && node.node_type !== 'approval') continue;
-    const oldSigs = edgesOf(fromVersionId).filter((e) => e.source_key === key).map(branchSig).sort();
-    const newSigs = edgesOf(toVersionId).filter((e) => e.source_key === key).map(branchSig).sort();
+    const oldSigs = edgesOf(fromVersionId)
+      .filter((e) => e.source_key === key)
+      .map(branchSig)
+      .sort();
+    const newSigs = edgesOf(toVersionId)
+      .filter((e) => e.source_key === key)
+      .map(branchSig)
+      .sort();
     if (before.has(key) && oldSigs.join('\n') !== newSigs.join('\n')) {
-      changes.push({ kind: 'changed', element: 'decision_branch', ref: nodeName(node), nodeKey: key, description: `Outcomes of ${nodeName(node)} changed` });
+      changes.push({
+        kind: 'changed',
+        element: 'decision_branch',
+        ref: nodeName(node),
+        nodeKey: key,
+        description: `Outcomes of ${nodeName(node)} changed`,
+      });
       changedKeys.add(key);
     }
   }
@@ -369,9 +485,21 @@ export function analyseChangeImpact(
     const node = after.get(f.node_key);
     const where = node ? ` on ${nodeName(node)}` : '';
     if (!old) {
-      changes.push({ kind: 'added', element: 'field', ref: fieldName(f.field_id), nodeKey: f.node_key, description: `${f.direction === 'input' ? 'Input' : 'Output'} ${fieldName(f.field_id)} added${where}` });
+      changes.push({
+        kind: 'added',
+        element: 'field',
+        ref: fieldName(f.field_id),
+        nodeKey: f.node_key,
+        description: `${f.direction === 'input' ? 'Input' : 'Output'} ${fieldName(f.field_id)} added${where}`,
+      });
     } else if (old.mandatory !== f.mandatory || old.mandatory_condition !== f.mandatory_condition) {
-      changes.push({ kind: 'changed', element: 'field', ref: fieldName(f.field_id), nodeKey: f.node_key, description: `${fieldName(f.field_id)}${where} is now ${f.mandatory === 'conditional' ? `required when ${f.mandatory_condition}` : f.mandatory === 'yes' ? 'mandatory' : 'optional'}` });
+      changes.push({
+        kind: 'changed',
+        element: 'field',
+        ref: fieldName(f.field_id),
+        nodeKey: f.node_key,
+        description: `${fieldName(f.field_id)}${where} is now ${f.mandatory === 'conditional' ? `required when ${f.mandatory_condition}` : f.mandatory === 'yes' ? 'mandatory' : 'optional'}`,
+      });
     } else continue;
     changedKeys.add(f.node_key);
     changedFields.add(f.field_id);
@@ -379,19 +507,38 @@ export function analyseChangeImpact(
   for (const [k, f] of oldFields) {
     if (newFields.has(k)) continue;
     const node = before.get(f.node_key);
-    changes.push({ kind: 'removed', element: 'field', ref: fieldName(f.field_id), nodeKey: f.node_key, description: `${fieldName(f.field_id)} removed${node ? ` from ${nodeName(node)}` : ''}` });
+    changes.push({
+      kind: 'removed',
+      element: 'field',
+      ref: fieldName(f.field_id),
+      nodeKey: f.node_key,
+      description: `${fieldName(f.field_id)} removed${node ? ` from ${nodeName(node)}` : ''}`,
+    });
     changedKeys.add(f.node_key);
     changedFields.add(f.field_id);
   }
   for (const rule of ctx.validationRules) {
     if (changedFields.has(rule.fieldId)) {
-      changes.push({ kind: 'changed', element: 'validation_rule', ref: rule.refCode, nodeKey: null, description: `${rule.refCode} validates ${fieldName(rule.fieldId)}, whose use changed` });
+      changes.push({
+        kind: 'changed',
+        element: 'validation_rule',
+        ref: rule.refCode,
+        nodeKey: null,
+        description: `${rule.refCode} validates ${fieldName(rule.fieldId)}, whose use changed`,
+      });
     }
   }
 
   const items = new Map<string, ImpactedItem>();
   const flag = (record: Story | BusinessScenario, type: ImpactedItem['type'], reason: string) => {
-    const item = items.get(record.id) ?? { id: record.id, refCode: record.refCode, type, title: record.title, status: record.status, reasons: [] };
+    const item = items.get(record.id) ?? {
+      id: record.id,
+      refCode: record.refCode,
+      type,
+      title: record.title,
+      status: record.status,
+      reasons: [],
+    };
     if (!item.reasons.includes(reason)) item.reasons.push(reason);
     items.set(record.id, item);
   };
@@ -402,7 +549,8 @@ export function analyseChangeImpact(
   for (const s of snapshot.stories) {
     const type = s.storyType === 'functional' ? 'functional_story' : 'technical_story';
     for (const a of s.activities) {
-      if (a.processId === processId && changedKeys.has(a.nodeKey)) flag(s, type, `Linked to ${nodeLabel(a.nodeKey)}, which changed`);
+      if (a.processId === processId && changedKeys.has(a.nodeKey))
+        flag(s, type, `Linked to ${nodeLabel(a.nodeKey)}, which changed`);
     }
     for (const f of s.fieldIds) if (changedFields.has(f)) flag(s, type, `Uses ${fieldName(f)}, whose use changed`);
   }
@@ -414,7 +562,8 @@ export function analyseChangeImpact(
   }
   for (const sc of snapshot.scenarios) {
     for (const a of sc.activities) {
-      if (a.processId === processId && changedKeys.has(a.nodeKey)) flag(sc, 'scenario', `Tests ${nodeLabel(a.nodeKey)}, which changed`);
+      if (a.processId === processId && changedKeys.has(a.nodeKey))
+        flag(sc, 'scenario', `Tests ${nodeLabel(a.nodeKey)}, which changed`);
     }
     for (const id of sc.storyIds) {
       const story = items.get(id);

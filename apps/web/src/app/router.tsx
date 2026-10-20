@@ -61,6 +61,54 @@ export const router = createRouter([
         path: 'projects/:projectId/data/rules',
         lazy: () => import('../modules/data-requirements/BusinessRulesPage').then((m) => ({ Component: m.BusinessRulesPage })),
       },
+      {
+        path: 'projects/:projectId/stories',
+        lazy: () => import('../modules/delivery/StoriesPage').then((m) => ({ Component: m.StoriesPage })),
+      },
+      {
+        path: 'projects/:projectId/scenarios',
+        lazy: () => import('../modules/delivery/ScenariosPage').then((m) => ({ Component: m.ScenariosPage })),
+      },
+      {
+        path: 'projects/:projectId/backlog',
+        lazy: () => import('../modules/delivery/BacklogPage').then((m) => ({ Component: m.BacklogPage })),
+      },
+      {
+        path: 'projects/:projectId/sprints',
+        lazy: () => import('../modules/delivery/SprintsPage').then((m) => ({ Component: m.SprintsPage })),
+      },
+      {
+        path: 'projects/:projectId/kanban',
+        lazy: () => import('../modules/delivery/KanbanPage').then((m) => ({ Component: m.KanbanPage })),
+      },
+      {
+        path: 'projects/:projectId/testing',
+        lazy: () => import('../modules/delivery/TestingPage').then((m) => ({ Component: m.TestingPage })),
+      },
+      {
+        path: 'projects/:projectId/testing/:executionId',
+        lazy: () => import('../modules/delivery/TestingPage').then((m) => ({ Component: m.ExecutionPage })),
+      },
+      {
+        path: 'projects/:projectId/defects',
+        lazy: () => import('../modules/delivery/DefectsPage').then((m) => ({ Component: m.DefectsPage })),
+      },
+      {
+        path: 'projects/:projectId/dashboard',
+        lazy: () => import('../modules/delivery/DashboardPage').then((m) => ({ Component: m.DashboardPage })),
+      },
+      {
+        path: 'projects/:projectId/insights',
+        lazy: () => import('../modules/delivery/InsightsPage').then((m) => ({ Component: m.InsightsPage })),
+      },
+      {
+        path: 'projects/:projectId/trace',
+        lazy: () => import('../modules/delivery/TracePage').then((m) => ({ Component: m.TracePage })),
+      },
+      {
+        path: 'projects/:projectId/settings',
+        lazy: () => import('../modules/delivery/SettingsPage').then((m) => ({ Component: m.SettingsPage })),
+      },
       { path: 'modules/:slug', element: <ComingSoonPage /> },
       { path: '*', element: <ComingSoonPage /> },
     ],

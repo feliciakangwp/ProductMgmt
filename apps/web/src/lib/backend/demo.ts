@@ -734,7 +734,11 @@ function projectContext(projectId: string): ProjectContext {
     validationRules: inProject(state.rules).map(ruleFromRow),
     businessRules: inProject(state.businessRules).map((r) => businessRuleFromRow(r, state.ruleLinks)),
     columns: inProject(state.columns).map(columnFromRow),
-    columnMappings: inProject(state.mappings).map((m) => ({ fieldId: m.field_id, columnId: m.column_id, transformation: m.transformation })),
+    columnMappings: inProject(state.mappings).map((m) => ({
+      fieldId: m.field_id,
+      columnId: m.column_id,
+      transformation: m.transformation,
+    })),
     members: inProject(state.members).map((m) => ({
       userId: m.user_id,
       role: m.role,
@@ -770,7 +774,11 @@ function ensureDeliverySeed(): Promise<void> {
       const me = state.members.find((m) => m.project_id === project.id && m.user_id === DEMO_USER_ID);
       if (me) me.role = 'admin';
       try {
-        await delivery.seed(project.id, process.id, { admin: DEMO_USER_ID, productOwner: 'user-priya', developer: 'user-marcus' });
+        await delivery.seed(project.id, process.id, {
+          admin: DEMO_USER_ID,
+          productOwner: 'user-priya',
+          developer: 'user-marcus',
+        });
       } finally {
         if (me && myRole) me.role = myRole;
       }
@@ -782,12 +790,10 @@ function ensureDeliverySeed(): Promise<void> {
 }
 
 const deliveryClient = new Proxy({} as DeliveryClient, {
-  get:
-    (_target, op: string) =>
-    async (input: unknown, signal?: AbortSignal) => {
-      await ensureDeliverySeed();
-      return (delivery.client as unknown as Record<string, (i: unknown, s?: AbortSignal) => Promise<unknown>>)[op]!(input, signal);
-    },
+  get: (_target, op: string) => async (input: unknown, signal?: AbortSignal) => {
+    await ensureDeliverySeed();
+    return (delivery.client as unknown as Record<string, (i: unknown, s?: AbortSignal) => Promise<unknown>>)[op]!(input, signal);
+  },
 });
 
 const demoControls: DemoControls = {

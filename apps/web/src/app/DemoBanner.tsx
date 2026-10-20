@@ -16,8 +16,8 @@ export function DemoBanner({ demo, projectId }: { demo: DemoControls; projectId:
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-amber-200 bg-amber-50 px-5 py-1.5 text-xs text-amber-900">
       <p className="min-w-0 flex-1">
-        <span className="font-semibold">Demo.</span> Your changes are kept in this browser only. Process analysis uses Claude on
-        your claude.ai account.
+        <span className="font-semibold">Demo.</span> Your changes are kept in this browser only. AI features use Claude on your
+        claude.ai account when available, otherwise labelled sample responses (see Settings).
         <span className="ml-1 md:hidden">Best viewed on a larger screen.</span>
       </p>
       {projectId && role ? (
