@@ -7,6 +7,8 @@ import {
   buildRuleTranslationPrompt,
   buildSuggestionContext,
   can,
+  DomainError,
+  runDeliveryOp,
   FIELD_SUGGESTION_PROMPT_VERSION,
   fieldSuggestionsJsonSchema,
   parseFieldSuggestions,
@@ -18,6 +20,7 @@ import {
 } from '@productflow/domain';
 import type { AiFailureKind, ProcessAnalyser, StructuredOutcome, StructuredRunner } from './ai/analyser';
 import { AppError } from './errors';
+import { createAiGateway, type ApiDeliveryStore } from './delivery';
 import type { Authenticator, UserRepository } from './repository';
 
 export interface ServerDeps {
@@ -25,6 +28,8 @@ export interface ServerDeps {
   /** Runs the Phase 2 structured AI tasks. */
   runner: StructuredRunner;
   authenticator: Authenticator;
+  /** Storage for the delivery modules (Phases 3 to 7). Without it those requests answer 503. */
+  deliveryStore?: ApiDeliveryStore;
   corsOrigin: string | string[];
   logger?: boolean;
 }
@@ -66,12 +71,27 @@ const FAILURE_STATUS: Record<AiFailureKind, number> = {
   configuration: 500,
 };
 
+const DOMAIN_STATUS: Record<string, number> = {
+  P0002: 404,
+  '42501': 403,
+  PF409: 409,
+  PF422: 422,
+  PF423: 423,
+  invalid_request: 400,
+};
+
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? false, bodyLimit: 256 * 1024 });
 
   app.register(cors, { origin: deps.corsOrigin, methods: ['GET', 'POST'] });
 
   app.setErrorHandler((error, request, reply) => {
+    if (error instanceof DomainError) {
+      const status = error.code.startsWith('ai_')
+        ? (FAILURE_STATUS[error.code.slice(3) as AiFailureKind] ?? 502)
+        : (DOMAIN_STATUS[error.code] ?? 400);
+      return reply.status(status).send({ error: { code: error.code, message: error.message } });
+    }
     if (error instanceof AppError) {
       return reply.status(error.statusCode).send({ error: { code: error.code, message: error.message } });
     }
@@ -254,6 +274,28 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     });
     if (!outcome.ok) return failure(reply, outcome, runId);
     return { runId, model: outcome.model, proposal: translationToProposal(outcome.value, dictionary) };
+  });
+
+  // Delivery (Phases 3 to 7): one route per service operation. The service
+  // checks the caller's project role and the workflow rules on every call.
+  app.post<{ Params: { op: string } }>('/api/delivery/:op', { bodyLimit: 3 * 1024 * 1024 }, async (request) => {
+    const repo = await requireUser(request);
+    const store = deps.deliveryStore;
+    if (!store) {
+      throw new AppError(503, 'delivery_unavailable', 'Delivery features are not configured on this server (SUPABASE_SERVICE_ROLE_KEY).');
+    }
+    const result = await runDeliveryOp(
+      {
+        store,
+        userId: repo.userId,
+        ai: createAiGateway(deps.runner, (run) => store.recordAiRun(run), repo.userId),
+        now: () => new Date().toISOString(),
+        newId: () => globalThis.crypto.randomUUID(),
+      },
+      request.params.op,
+      request.body ?? {},
+    );
+    return { result: result ?? null };
   });
 
   return app;

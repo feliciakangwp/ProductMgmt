@@ -1,5 +1,6 @@
 import { ClaudeProcessAnalyser, ClaudeStructuredRunner, createAnthropicMessageFn } from './ai/analyser';
 import { loadConfig } from './config';
+import { createServiceClient, createSupabaseDeliveryStore } from './delivery';
 import { createSupabaseAuthenticator } from './repository';
 import { buildServer } from './server';
 
@@ -17,6 +18,9 @@ const app = buildServer({
   corsOrigin: config.CORS_ORIGIN.split(',').map((o) => o.trim()),
   authenticator: createSupabaseAuthenticator(config.SUPABASE_URL, config.SUPABASE_ANON_KEY),
   analyser: new ClaudeProcessAnalyser({ runner }),
+  deliveryStore: config.SUPABASE_SERVICE_ROLE_KEY
+    ? createSupabaseDeliveryStore(createServiceClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY))
+    : undefined,
 });
 
 app.listen({ port: config.PORT, host: config.HOST }).catch((err) => {

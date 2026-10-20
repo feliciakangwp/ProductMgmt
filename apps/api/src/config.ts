@@ -6,6 +6,8 @@ const EnvSchema = z.object({
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   SUPABASE_URL: z.url(),
   SUPABASE_ANON_KEY: z.string().min(1),
+  /** Lets the API write delivery records after checking the caller's role. Never sent to browsers. */
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   ANTHROPIC_API_KEY: z.string().min(1),
   ANTHROPIC_MODEL: z.string().default('claude-opus-5-5'),
   ANALYSIS_EFFORT: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),

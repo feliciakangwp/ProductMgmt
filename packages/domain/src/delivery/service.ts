@@ -500,6 +500,12 @@ export const DELIVERY_OPS = {
     return loadSnapshot(ctx, projectId);
   }),
 
+  /** Processes, activities, the data dictionary, rules and members: what the delivery screens link to. */
+  projectContext: op(z.strictObject({ projectId: Id }), async (ctx, { projectId }) => {
+    await roleIn(ctx, projectId);
+    return ctx.store.context(projectId);
+  }),
+
   updateSettings: op(
     z.strictObject({
       projectId: Id,
