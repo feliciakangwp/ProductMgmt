@@ -81,20 +81,26 @@ test('analyst creates, analyses, edits, saves, reopens and approves a process', 
   await page.getByRole('tab', { name: /Validation/ }).click();
   await expect(page.getByText('"Notify debtor" is not connected to the process.')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Auto layout' }).click();
   const source = node(page, 'Update debt status to Written Off').locator('.react-flow__handle-bottom.source');
   const target = node(page, 'Notify debtor').locator('.react-flow__handle-top.target');
-  await source.hover();
-  await page.mouse.down();
-  await target.hover();
-  await page.mouse.up();
+  // Connect where the new step was placed (Auto layout can move it outside the visible canvas), retrying while the map settles.
+  await expect(async () => {
+    const from = (await source.boundingBox())!;
+    const to = (await target.boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 });
+    await page.mouse.up();
+    await expect(page.locator('.react-flow__edge')).toHaveCount(9, { timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
   await expect(page.getByText('"Notify debtor" is not connected to the process.')).toBeHidden();
-  await expect(page.locator('.react-flow__edge')).toHaveCount(9);
 
   // Undo and redo the connection.
   await page.getByRole('button', { name: 'Undo (Ctrl+Z)' }).click();
   await expect(page.locator('.react-flow__edge')).toHaveCount(8);
   await page.getByRole('button', { name: 'Redo (Ctrl+Shift+Z)' }).click();
+  await expect(page.locator('.react-flow__edge')).toHaveCount(9);
+  await page.getByRole('button', { name: 'Auto layout' }).click();
   await expect(page.locator('.react-flow__edge')).toHaveCount(9);
 
   // Accept a finding.
