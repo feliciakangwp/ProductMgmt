@@ -132,8 +132,8 @@ describe('persistence mapping', () => {
     if (!r.ok) throw new Error(r.reason);
     g = r.graph;
     const payload = toSavePayload({ versionId: 'v1', expectedRevision: 3, description: 'desc', graph: g, findings: [] });
-    const nodeRows = payload.p_nodes.map((n, i) => ({ ...n, id: `row${i}`, version_id: 'v1', ref_code: null }));
-    const edgeRows = payload.p_edges.map((e, i) => ({ ...e, id: `edge${i}`, version_id: 'v1' }));
+    const nodeRows = payload.p_nodes.map((n, i) => ({ ...n, id: `row${i}`, version_id: 'v1', project_id: 'p1', ref_code: null }));
+    const edgeRows = payload.p_edges.map((e, i) => ({ ...e, id: `edge${i}`, version_id: 'v1', project_id: 'p1' }));
     expect(graphFromRows(nodeRows, edgeRows)).toEqual(g);
   });
 
@@ -167,6 +167,7 @@ describe('persistence mapping', () => {
     const node = nodeFromRow({
       id: 'r',
       version_id: 'v',
+      project_id: 'p',
       element_key: 'k',
       ref_code: 'ACT-001',
       node_type: 'activity',
@@ -183,6 +184,7 @@ describe('persistence mapping', () => {
       edgeFromRow({
         id: 'e',
         version_id: 'v',
+        project_id: 'p',
         element_key: 'k',
         source_key: 'a',
         target_key: 'b',

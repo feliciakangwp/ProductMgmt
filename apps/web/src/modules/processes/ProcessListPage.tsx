@@ -26,8 +26,8 @@ export function ProcessListPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-8">
-      <div className="mb-6 flex items-center justify-between gap-4">
+    <div className="mx-auto max-w-6xl p-4 sm:p-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-xs font-semibold tracking-wide text-brand-700">{project.data.key} · Process Designer</p>
           <h1 className="text-xl font-semibold text-slate-900">Business processes</h1>
@@ -74,7 +74,7 @@ export function ProcessListPage() {
 
 function ProcessTable({ projectId, processes }: { projectId: string; processes: ProcessSummary[] }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
       <table className="w-full text-sm">
         <thead className="bg-slate-50 text-left text-xs font-medium text-slate-500">
           <tr>

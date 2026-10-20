@@ -38,7 +38,7 @@ export function MembersPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-8">
+    <div className="mx-auto max-w-4xl p-4 sm:p-8">
       <Link to="/projects" className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
         <ArrowLeft className="size-4" /> Projects
       </Link>
@@ -93,7 +93,7 @@ export function MembersPage() {
       {members.isPending ? <Spinner /> : null}
       {members.error ? <Alert tone="error">{errorMessage(members.error)}</Alert> : null}
       {members.data ? (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs font-medium text-slate-500">
               <tr>

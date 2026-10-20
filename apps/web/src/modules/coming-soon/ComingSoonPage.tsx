@@ -22,7 +22,7 @@ export function ComingSoonPage() {
   }
   const Icon = module.icon;
   return (
-    <div className="mx-auto max-w-3xl p-8">
+    <div className="mx-auto max-w-3xl p-4 sm:p-8">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex size-10 items-center justify-center rounded-lg bg-slate-200 text-slate-500">
           <Icon className="size-5" />

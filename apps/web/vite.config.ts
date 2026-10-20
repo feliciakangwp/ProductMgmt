@@ -14,6 +14,17 @@ export default defineConfig(({ mode }) => ({
       ),
     },
   },
+  // The demo is published as one self-contained page, so it is built as a single script and stylesheet.
+  build:
+    mode === 'demo'
+      ? {
+          outDir: 'dist-demo',
+          cssCodeSplit: false,
+          assetsInlineLimit: Number.MAX_SAFE_INTEGER,
+          chunkSizeWarningLimit: 2000,
+          rolldownOptions: { output: { inlineDynamicImports: true } },
+        }
+      : {},
   server: {
     port: 5173,
     // The API runs separately; proxy it so the browser only talks to one origin in development.

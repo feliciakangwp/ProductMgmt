@@ -87,9 +87,20 @@ export interface AuthApi {
   signOut(): Promise<void>;
 }
 
+/** Extra controls only the in-browser demo offers. */
+export interface DemoControls {
+  /** Discards everything the viewer changed and restores the example data. */
+  reset(): void;
+  /** Lets the viewer try the app as another project role. */
+  setMyRole(projectId: string, role: ProjectRole): void;
+  myRole(projectId: string): ProjectRole | null;
+}
+
 export interface Backend {
   readonly mode: 'live' | 'demo';
   auth: AuthApi;
+  /** Present only in the demo build. */
+  readonly demo?: DemoControls;
 
   listMyProjects(userId: string): Promise<ProjectWithRole[]>;
   createProject(input: { key: string; name: string; description: string }): Promise<ProjectRow>;

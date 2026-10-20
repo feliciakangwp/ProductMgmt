@@ -5,6 +5,7 @@ import { RouterProvider } from 'react-router';
 import { router } from './app/router';
 import { SetupRequired } from './app/SetupRequired';
 import { AuthProvider } from './auth/AuthProvider';
+import { backend } from './lib/backend';
 import { isConfigured } from './lib/env';
 import './index.css';
 
@@ -16,7 +17,7 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {isConfigured ? (
+    {isConfigured || backend.mode === 'demo' ? (
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <RouterProvider router={router} />

@@ -1,11 +1,12 @@
 import { ChevronDown, LogOut } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, Outlet, useMatch, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthProvider';
 import { Select } from '../components/ui';
 import { safeStorage } from '../lib/storage';
 import { backend } from '../lib/backend';
 import { useProjects } from '../modules/projects/api';
+import { DemoBanner } from './DemoBanner';
 import { Sidebar } from './Sidebar';
 
 export const LAST_PROJECT_KEY = 'productflow:lastProject';
@@ -16,7 +17,8 @@ export function AppLayout() {
   // The process designer needs the width; collapse the sidebar there unless the user expands it.
   const inDesigner = Boolean(useMatch('/projects/:projectId/processes/:processId'));
   const [expandedInDesigner, setExpandedInDesigner] = useState(false);
-  const collapsed = inDesigner ? !expandedInDesigner : preferCollapsed;
+  const small = useMediaQuery('(max-width: 767px)');
+  const collapsed = inDesigner || small ? !expandedInDesigner : preferCollapsed;
   const match = useMatch('/projects/:projectId/*');
   const routeProjectId = match?.params.projectId ?? null;
   const projects = useProjects();
@@ -33,7 +35,7 @@ export function AppLayout() {
         collapsed={collapsed}
         projectId={projectId}
         onToggle={() => {
-          if (inDesigner) {
+          if (inDesigner || small) {
             setExpandedInDesigner(collapsed);
             return;
           }
@@ -42,6 +44,7 @@ export function AppLayout() {
         }}
       />
       <div className="flex min-w-0 flex-1 flex-col">
+        {backend.demo ? <DemoBanner demo={backend.demo} projectId={projectId} /> : null}
         <TopBar projectId={projectId} />
         <main className="min-h-0 flex-1 overflow-auto">
           <Outlet />
@@ -59,13 +62,13 @@ function TopBar({ projectId }: { projectId: string | null }) {
   const name = session?.displayName ?? '';
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-5">
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-slate-500">Project</span>
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 sm:px-5">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="hidden text-xs font-medium text-slate-500 sm:inline">Project</span>
         {projects.data && projects.data.length > 0 ? (
           <Select
             aria-label="Current project"
-            className="h-8 w-64 text-sm"
+            className="h-8 w-64 min-w-0 text-sm"
             value={projectId ?? ''}
             onChange={(e) => navigate(e.target.value ? `/projects/${e.target.value}/processes` : '/projects')}
           >
@@ -93,10 +96,10 @@ function TopBar({ projectId }: { projectId: string | null }) {
           <span className="flex size-7 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-800">
             {name.slice(0, 1).toUpperCase()}
           </span>
-          <span className="max-w-48 truncate">{name}</span>
+          <span className="hidden max-w-48 truncate sm:inline">{name}</span>
           <ChevronDown className="size-3.5 text-slate-400" />
         </button>
-        {menuOpen ? (
+        {menuOpen && !backend.demo ? (
           <div role="menu" className="absolute right-0 z-20 mt-1 w-48 rounded-md border border-slate-200 bg-white py-1 shadow-lg">
             <button
               role="menuitem"
@@ -113,5 +116,17 @@ function TopBar({ projectId }: { projectId: string | null }) {
         ) : null}
       </div>
     </header>
+  );
+}
+
+function useMediaQuery(query: string): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const list = window.matchMedia(query);
+      list.addEventListener('change', onChange);
+      return () => list.removeEventListener('change', onChange);
+    },
+    () => window.matchMedia(query).matches,
+    () => false,
   );
 }

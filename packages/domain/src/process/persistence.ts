@@ -70,6 +70,7 @@ export interface ActorRow {
 export interface ProcessNodeRow {
   id: string;
   version_id: string;
+  project_id: string;
   element_key: string;
   ref_code: string | null;
   node_type: ProcessNodeType;
@@ -85,6 +86,7 @@ export interface ProcessNodeRow {
 export interface ProcessEdgeRow {
   id: string;
   version_id: string;
+  project_id: string;
   element_key: string;
   source_key: string;
   target_key: string;
@@ -96,6 +98,7 @@ export interface ProcessEdgeRow {
 export interface ProcessFindingRow {
   id: string;
   version_id: string;
+  project_id: string;
   element_key: string;
   kind: FindingKind;
   statement: string;

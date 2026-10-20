@@ -27,8 +27,8 @@ export function ProjectsPage() {
   const [creating, setCreating] = useState(false);
 
   return (
-    <div className="mx-auto max-w-5xl p-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="mx-auto max-w-5xl p-4 sm:p-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Projects</h1>
           <p className="text-sm text-slate-500">Each project has its own processes, requirements and team.</p>
