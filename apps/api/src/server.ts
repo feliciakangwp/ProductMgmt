@@ -1,13 +1,29 @@
 import cors from '@fastify/cors';
-import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { analysisToProposal, can } from '@productflow/domain';
-import type { AnalysisFailureKind, ProcessAnalyser } from './ai/analyser';
+import {
+  analysisToProposal,
+  buildFieldSuggestionPrompt,
+  buildRuleTranslationPrompt,
+  buildSuggestionContext,
+  can,
+  FIELD_SUGGESTION_PROMPT_VERSION,
+  fieldSuggestionsJsonSchema,
+  parseFieldSuggestions,
+  parseRuleTranslation,
+  RULE_TRANSLATION_PROMPT_VERSION,
+  ruleTranslationJsonSchema,
+  suggestionsToProposal,
+  translationToProposal,
+} from '@productflow/domain';
+import type { AiFailureKind, ProcessAnalyser, StructuredOutcome, StructuredRunner } from './ai/analyser';
 import { AppError } from './errors';
 import type { Authenticator, UserRepository } from './repository';
 
 export interface ServerDeps {
   analyser: ProcessAnalyser;
+  /** Runs the Phase 2 structured AI tasks. */
+  runner: StructuredRunner;
   authenticator: Authenticator;
   corsOrigin: string | string[];
   logger?: boolean;
@@ -24,7 +40,24 @@ const AnalyseBody = z.object({
     .max(MAX_DESCRIPTION_LENGTH, `The description must be ${MAX_DESCRIPTION_LENGTH} characters or fewer.`),
 });
 
-const FAILURE_STATUS: Record<AnalysisFailureKind, number> = {
+const FieldSuggestionBody = z.object({
+  versionId: z.uuid(),
+  nodeKeys: z.array(z.uuid()).max(100).optional(),
+});
+
+const RuleTranslationBody = z.object({
+  fieldId: z.uuid(),
+  text: z
+    .string()
+    .trim()
+    .min(5, 'Describe the validation logic first.')
+    .max(4000, 'The validation logic must be 4000 characters or fewer.'),
+});
+
+const FIELD_SCHEMA = fieldSuggestionsJsonSchema();
+const RULE_SCHEMA = ruleTranslationJsonSchema();
+
+const FAILURE_STATUS: Record<AiFailureKind, number> = {
   refusal: 422,
   truncated: 422,
   invalid_output: 502,
@@ -104,6 +137,123 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     }
 
     return { runId, model: outcome.model, proposal: analysisToProposal(outcome.analysis) };
+  });
+
+  function failure(reply: FastifyReply, outcome: Extract<StructuredOutcome<unknown>, { ok: false }>, runId: string) {
+    return reply
+      .status(FAILURE_STATUS[outcome.kind])
+      .send({ error: { code: `ai_${outcome.kind}`, message: outcome.message }, runId });
+  }
+
+  app.post('/api/field-suggestions', async (request, reply) => {
+    const repo = await requireUser(request);
+    const parsed = FieldSuggestionBody.safeParse(request.body);
+    if (!parsed.success) throw new AppError(400, 'invalid_request', parsed.error.issues[0]?.message ?? 'Invalid request.');
+    const { versionId, nodeKeys } = parsed.data;
+
+    const context = await repo.getVersionContext(versionId);
+    if (!context) throw new AppError(404, 'not_found', 'Process version not found.');
+    if (!can(context.role, 'editData')) {
+      throw new AppError(403, 'forbidden', 'Only Business Analysts and Administrators can define data requirements.');
+    }
+    if (context.status !== 'draft') {
+      throw new AppError(
+        409,
+        'version_locked',
+        'This version is not a draft. Create a new draft to change its data requirements.',
+      );
+    }
+
+    const data = await repo.getProcessDataContext(context);
+    const { context: promptContext, keyByActivityId } = buildSuggestionContext({
+      processName: context.processName,
+      description: data.description,
+      graph: data.graph,
+      actors: data.actors,
+      dictionary: data.dictionary,
+      businessRules: data.businessRules,
+      nodeKeys,
+    });
+    if (keyByActivityId.size === 0) {
+      throw new AppError(422, 'no_activities', 'The process map has no activities to define data for. Create the map first.');
+    }
+    const prompt = buildFieldSuggestionPrompt(promptContext);
+    const ids = new Set(keyByActivityId.keys());
+    const outcome = await deps.runner.run({
+      ...prompt,
+      schema: FIELD_SCHEMA,
+      parse: (raw) => parseFieldSuggestions(raw, ids),
+      promptVersion: FIELD_SUGGESTION_PROMPT_VERSION,
+    });
+    const runId = await repo.recordAiTaskRun({
+      projectId: context.projectId,
+      task: 'field_suggestions',
+      subjectId: versionId,
+      model: outcome.model,
+      promptVersion: outcome.promptVersion,
+      succeeded: outcome.ok,
+      input: prompt.user,
+      response: outcome.ok ? outcome.value : outcome.rawOutput,
+      error: outcome.ok ? null : `${outcome.kind}: ${outcome.message}`,
+      usage: outcome.usage,
+    });
+    if (!outcome.ok) return failure(reply, outcome, runId);
+    return {
+      runId,
+      model: outcome.model,
+      proposal: suggestionsToProposal(outcome.value, {
+        keyByActivityId,
+        dictionary: data.dictionary,
+        current: data.requirements,
+      }),
+    };
+  });
+
+  app.post('/api/rule-translation', async (request, reply) => {
+    const repo = await requireUser(request);
+    const parsed = RuleTranslationBody.safeParse(request.body);
+    if (!parsed.success) throw new AppError(400, 'invalid_request', parsed.error.issues[0]?.message ?? 'Invalid request.');
+    const { fieldId, text } = parsed.data;
+
+    const context = await repo.getFieldContext(fieldId);
+    if (!context) throw new AppError(404, 'not_found', 'Field not found.');
+    if (!can(context.role, 'editData')) {
+      throw new AppError(403, 'forbidden', 'Only Business Analysts and Administrators can define validation rules.');
+    }
+    const { field, dictionary } = context;
+    const prompt = buildRuleTranslationPrompt({
+      field: {
+        refCode: field.refCode,
+        name: field.name,
+        dataType: field.dataType,
+        description: field.description,
+        allowedValues: field.allowedValues,
+      },
+      otherFields: dictionary
+        .filter((f) => f.id !== field.id && f.status !== 'deprecated')
+        .map((f) => ({ refCode: f.refCode, name: f.name, dataType: f.dataType })),
+      text,
+    });
+    const outcome = await deps.runner.run({
+      ...prompt,
+      schema: RULE_SCHEMA,
+      parse: parseRuleTranslation,
+      promptVersion: RULE_TRANSLATION_PROMPT_VERSION,
+    });
+    const runId = await repo.recordAiTaskRun({
+      projectId: context.projectId,
+      task: 'rule_translation',
+      subjectId: fieldId,
+      model: outcome.model,
+      promptVersion: outcome.promptVersion,
+      succeeded: outcome.ok,
+      input: text,
+      response: outcome.ok ? outcome.value : outcome.rawOutput,
+      error: outcome.ok ? null : `${outcome.kind}: ${outcome.message}`,
+      usage: outcome.usage,
+    });
+    if (!outcome.ok) return failure(reply, outcome, runId);
+    return { runId, model: outcome.model, proposal: translationToProposal(outcome.value, dictionary) };
   });
 
   return app;

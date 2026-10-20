@@ -19,6 +19,8 @@ export const PERMISSIONS = {
   editProcess: ['admin', 'business_analyst'],
   runAnalysis: ['admin', 'business_analyst'],
   approveProcess: ['admin', 'product_owner'],
+  editData: ['admin', 'business_analyst'],
+  approveBusinessRule: ['admin', 'product_owner'],
 } as const satisfies Record<string, readonly ProjectRole[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

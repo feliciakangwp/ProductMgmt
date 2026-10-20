@@ -1,19 +1,22 @@
-import { ClaudeProcessAnalyser, createAnthropicMessageFn } from './ai/analyser';
+import { ClaudeProcessAnalyser, ClaudeStructuredRunner, createAnthropicMessageFn } from './ai/analyser';
 import { loadConfig } from './config';
 import { createSupabaseAuthenticator } from './repository';
 import { buildServer } from './server';
 
 const config = loadConfig();
 
+const runner = new ClaudeStructuredRunner({
+  createMessage: createAnthropicMessageFn(config.ANTHROPIC_API_KEY),
+  model: config.ANTHROPIC_MODEL,
+  effort: config.ANALYSIS_EFFORT,
+});
+
 const app = buildServer({
+  runner,
   logger: true,
   corsOrigin: config.CORS_ORIGIN.split(',').map((o) => o.trim()),
   authenticator: createSupabaseAuthenticator(config.SUPABASE_URL, config.SUPABASE_ANON_KEY),
-  analyser: new ClaudeProcessAnalyser({
-    createMessage: createAnthropicMessageFn(config.ANTHROPIC_API_KEY),
-    model: config.ANTHROPIC_MODEL,
-    effort: config.ANALYSIS_EFFORT,
-  }),
+  analyser: new ClaudeProcessAnalyser({ runner }),
 });
 
 app.listen({ port: config.PORT, host: config.HOST }).catch((err) => {

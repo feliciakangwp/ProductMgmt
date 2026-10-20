@@ -236,6 +236,31 @@ create table public.activity_outputs (
 );
 
 -- ---------------------------------------------------------------------------
+-- AI runs for data requirements (process analysis runs keep their own table)
+-- ---------------------------------------------------------------------------
+
+create type public.ai_task as enum ('field_suggestions', 'rule_translation');
+
+create table public.ai_task_runs (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects (id) on delete cascade,
+  task public.ai_task not null,
+  -- The process version (field suggestions) or dictionary field (rule translation) the run was for.
+  subject_id uuid not null,
+  model text not null,
+  prompt_version text not null,
+  succeeded boolean not null,
+  input text not null,
+  response jsonb,
+  error text,
+  usage jsonb,
+  created_by uuid not null default auth.uid() references public.profiles (id),
+  created_at timestamptz not null default now()
+);
+
+create index ai_task_runs_subject_idx on public.ai_task_runs (subject_id, created_at desc);
+
+-- ---------------------------------------------------------------------------
 -- Triggers
 -- ---------------------------------------------------------------------------
 
@@ -629,6 +654,17 @@ alter table public.business_rule_activities enable row level security;
 alter table public.validation_rules enable row level security;
 alter table public.activity_fields enable row level security;
 alter table public.activity_outputs enable row level security;
+alter table public.ai_task_runs enable row level security;
+
+grant select, insert (project_id, task, subject_id, model, prompt_version, succeeded, input, response, error, usage)
+  on public.ai_task_runs to authenticated;
+create policy ai_task_runs_select on public.ai_task_runs for select to authenticated
+using (public.is_project_member(project_id));
+create policy ai_task_runs_insert on public.ai_task_runs for insert to authenticated
+with check (
+  public.has_project_role(project_id, array['admin', 'business_analyst']::public.project_role[])
+  and created_by = auth.uid()
+);
 
 grant select on public.field_definitions, public.physical_columns, public.field_column_mappings, public.business_rules,
   public.business_rule_activities, public.validation_rules, public.activity_fields, public.activity_outputs
