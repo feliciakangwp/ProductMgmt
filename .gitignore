@@ -12,3 +12,5 @@ supabase/.temp/
 e2e/.cache/
 e2e/.stack/
 dist-demo/
+e2e/.fx.json
+e2e/.analysis.json
