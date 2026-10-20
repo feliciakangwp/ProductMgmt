@@ -1,0 +1,23 @@
+{
+  "name": "productflow-ai",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @productflow/api & npm run dev --workspace @productflow/web",
+    "dev:web": "npm run dev --workspace @productflow/web",
+    "dev:api": "npm run dev --workspace @productflow/api",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:db": "bash supabase/tests/run.sh",
+    "lint": "eslint ."
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
