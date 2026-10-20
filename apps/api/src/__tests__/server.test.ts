@@ -69,8 +69,17 @@ describe('POST /api/process-analysis', () => {
     expect(body.proposal.nodes).toHaveLength(8);
     expect(body.proposal.actors.map((a: { name: string }) => a.name)).toContain('Supervisor');
     expect(current.runs).toHaveLength(1);
-    expect(current.runs[0]).toMatchObject({ succeeded: true, descriptionSnapshot: DESCRIPTION, versionId: VERSION_ID, error: null });
-    expect(current.analyser.analyse).toHaveBeenCalledWith({ description: DESCRIPTION, processName: 'Debt write-off', processType: 'to_be' });
+    expect(current.runs[0]).toMatchObject({
+      succeeded: true,
+      descriptionSnapshot: DESCRIPTION,
+      versionId: VERSION_ID,
+      error: null,
+    });
+    expect(current.analyser.analyse).toHaveBeenCalledWith({
+      description: DESCRIPTION,
+      processName: 'Debt write-off',
+      processType: 'to_be',
+    });
   });
 
   it('requires a valid session', async () => {

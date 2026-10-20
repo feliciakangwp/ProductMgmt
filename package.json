@@ -5,7 +5,8 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/*",
+    "e2e"
   ],
   "scripts": {
     "dev": "npm run dev --workspace @productflow/api & npm run dev --workspace @productflow/web",
@@ -15,9 +16,14 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:db": "bash supabase/tests/run.sh",
-    "lint": "eslint ."
+    "lint": "prettier --check .",
+    "test:e2e": "npm run test:e2e --workspace @productflow/e2e",
+    "format": "prettier --write ."
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10"
   }
 }

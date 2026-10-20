@@ -1,10 +1,4 @@
-export const PROJECT_ROLES = [
-  'admin',
-  'product_owner',
-  'business_analyst',
-  'developer',
-  'business_user',
-] as const;
+export const PROJECT_ROLES = ['admin', 'product_owner', 'business_analyst', 'developer', 'business_user'] as const;
 export type ProjectRole = (typeof PROJECT_ROLES)[number];
 
 export const PROJECT_ROLE_LABELS: Record<ProjectRole, string> = {

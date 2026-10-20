@@ -29,15 +29,16 @@ export function addNode(graph: ProcessGraph, node: ProcessNode): ProcessGraph {
 /** Removes nodes and every connection touching them. */
 export function removeNodes(graph: ProcessGraph, keys: string[]): ProcessGraph {
   const remove = new Set(keys);
-  return {
-    nodes: graph.nodes.filter((n) => !remove.has(n.elementKey)),
-    edges: graph.edges.filter((e) => !remove.has(e.source) && !remove.has(e.target)),
-  };
+  const nodes = graph.nodes.filter((n) => !remove.has(n.elementKey));
+  const edges = graph.edges.filter((e) => !remove.has(e.source) && !remove.has(e.target));
+  if (nodes.length === graph.nodes.length && edges.length === graph.edges.length) return graph;
+  return { nodes, edges };
 }
 
 export function removeEdges(graph: ProcessGraph, keys: string[]): ProcessGraph {
   const remove = new Set(keys);
-  return { ...graph, edges: graph.edges.filter((e) => !remove.has(e.elementKey)) };
+  const edges = graph.edges.filter((e) => !remove.has(e.elementKey));
+  return edges.length === graph.edges.length ? graph : { ...graph, edges };
 }
 
 export type NodePatch = Partial<Pick<ProcessNode, 'label' | 'description' | 'actorId' | 'type' | 'position'>>;

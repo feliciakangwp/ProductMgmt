@@ -22,7 +22,11 @@ function message(text: string, overrides: Partial<BetaMessage> = {}): BetaMessag
   } as unknown as BetaMessage;
 }
 
-const request = { description: 'When a Finance Officer receives a request...', processName: 'Debt write-off', processType: 'to_be' };
+const request = {
+  description: 'When a Finance Officer receives a request...',
+  processName: 'Debt write-off',
+  processType: 'to_be',
+};
 
 function analyser(createMessage: (p: MessageCreateParamsNonStreaming) => Promise<BetaMessage>) {
   return new ClaudeProcessAnalyser({ createMessage, model: 'claude-opus-5-5', effort: 'medium' });

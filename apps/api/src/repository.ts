@@ -76,9 +76,10 @@ class SupabaseUserRepository implements UserRepository {
       .maybeSingle();
     if (memberError) throw new AppError(500, 'database_error', memberError.message);
 
-    const process = (Array.isArray(version.processes) ? version.processes[0] : version.processes) as
-      | { name: string; process_type: string }
-      | null;
+    const process = (Array.isArray(version.processes) ? version.processes[0] : version.processes) as {
+      name: string;
+      process_type: string;
+    } | null;
     return {
       versionId: version.id,
       processId: version.process_id,

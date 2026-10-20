@@ -195,8 +195,20 @@ export function validateProcess(input: ValidationInput): ValidationIssue[] {
     forward.set(edge.source, [...(forward.get(edge.source) ?? []), edge.target]);
     backward.set(edge.target, [...(backward.get(edge.target) ?? []), edge.source]);
   }
-  const reachable = starts.length > 0 ? reach(starts.map((n) => n.elementKey), forward) : null;
-  const canFinish = ends.length > 0 ? reach(ends.map((n) => n.elementKey), backward) : null;
+  const reachable =
+    starts.length > 0
+      ? reach(
+          starts.map((n) => n.elementKey),
+          forward,
+        )
+      : null;
+  const canFinish =
+    ends.length > 0
+      ? reach(
+          ends.map((n) => n.elementKey),
+          backward,
+        )
+      : null;
 
   for (const node of nodes) {
     const key = node.elementKey;
@@ -235,12 +247,9 @@ export function validateProcess(input: ValidationInput): ValidationIssue[] {
       );
     }
     if (node.type === 'approval' && outs.length === 1) {
-      add(
-        'APPROVAL_SINGLE_OUTCOME',
-        'warning',
-        `Approval ${nodeName(node)} has only one outcome. Is there a rejection path?`,
-        { nodeKeys: [node.elementKey] },
-      );
+      add('APPROVAL_SINGLE_OUTCOME', 'warning', `Approval ${nodeName(node)} has only one outcome. Is there a rejection path?`, {
+        nodeKeys: [node.elementKey],
+      });
     }
     if (outs.length >= 2) {
       for (const edge of outs) {
@@ -294,12 +303,10 @@ export function validateProcess(input: ValidationInput): ValidationIssue[] {
   for (const edge of validEdges) {
     const vague = findVagueTerms(`${edge.label} ${edge.condition}`);
     if (vague.length > 0) {
-      add(
-        'AMBIGUOUS_WORDING',
-        'warning',
-        `A condition uses vague wording (${vague.map((t) => `"${t}"`).join(', ')}).`,
-        { nodeKeys: [edge.source], edgeKeys: [edge.elementKey] },
-      );
+      add('AMBIGUOUS_WORDING', 'warning', `A condition uses vague wording (${vague.map((t) => `"${t}"`).join(', ')}).`, {
+        nodeKeys: [edge.source],
+        edgeKeys: [edge.elementKey],
+      });
     }
   }
 

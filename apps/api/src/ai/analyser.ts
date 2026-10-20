@@ -1,8 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type {
-  BetaMessage,
-  MessageCreateParamsNonStreaming,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages';
+import type { BetaMessage, MessageCreateParamsNonStreaming } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { parseProcessAnalysis, processAnalysisJsonSchema, type ProcessAnalysis } from '@productflow/domain';
 import { buildRetryMessage, buildUserMessage, PROMPT_VERSION, SYSTEM_PROMPT } from './prompt';
 
@@ -116,9 +113,7 @@ export class ClaudeProcessAnalyser implements ProcessAnalyser {
       if (response.stop_reason === 'refusal') {
         return fail('refusal', 'Claude declined to analyse this description. Review the text and try again.');
       }
-      const text = response.content
-        .flatMap((block) => (block.type === 'text' ? [block.text] : []))
-        .join('');
+      const text = response.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('');
       lastOutput = text;
       if (response.stop_reason === 'max_tokens') {
         return fail('truncated', 'The process description is too long to analyse in one pass. Split it into smaller processes.');

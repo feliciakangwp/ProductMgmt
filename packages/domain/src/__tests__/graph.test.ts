@@ -27,7 +27,7 @@ function sample(): ProcessGraph {
 describe('graph operations', () => {
   it('connects nodes and assigns Yes then No to decision branches', () => {
     const g0 = sample();
-    const [start, decision, end] = g0.nodes as [typeof g0.nodes[0], typeof g0.nodes[0], typeof g0.nodes[0]];
+    const [start, decision, end] = g0.nodes as [(typeof g0.nodes)[0], (typeof g0.nodes)[0], (typeof g0.nodes)[0]];
     const r1 = connectNodes(g0, start.elementKey, decision.elementKey);
     expect(r1.ok && r1.edge.branch).toBe(null);
     if (!r1.ok) return;
@@ -56,7 +56,10 @@ describe('graph operations', () => {
   it('removes connections together with deleted nodes', () => {
     let g = sample();
     const [start, decision, end] = g.nodes.map((n) => n.elementKey) as [string, string, string];
-    for (const [s, t] of [[start, decision], [decision, end]] as const) {
+    for (const [s, t] of [
+      [start, decision],
+      [decision, end],
+    ] as const) {
       const r = connectNodes(g, s, t);
       if (!r.ok) throw new Error(r.reason);
       g = r.graph;
@@ -94,7 +97,8 @@ describe('graph operations', () => {
     const moved = moveNodes(g, { [key]: { x: 5, y: 6 } });
     expect(moved.nodes[1]!.position).toEqual({ x: 5, y: 6 });
     expect(moved.nodes[0]).toBe(g.nodes[0]);
-    expect(removeEdges(g, ['none']).edges).toEqual([]);
+    expect(removeEdges(g, ['none'])).toBe(g);
+    expect(removeNodes(g, ['none'])).toBe(g);
   });
 });
 
@@ -102,7 +106,14 @@ describe('layoutGraph', () => {
   it('ignores dangling edges and returns positions for every node', () => {
     const g = sample();
     const laidOut = layoutGraph(g.nodes, [
-      { elementKey: 'e1', source: g.nodes[0]!.elementKey, target: g.nodes[1]!.elementKey, label: '', condition: '', branch: null },
+      {
+        elementKey: 'e1',
+        source: g.nodes[0]!.elementKey,
+        target: g.nodes[1]!.elementKey,
+        label: '',
+        condition: '',
+        branch: null,
+      },
       { elementKey: 'e2', source: g.nodes[1]!.elementKey, target: 'ghost', label: '', condition: '', branch: null },
     ]);
     expect(laidOut).toHaveLength(3);
@@ -169,7 +180,16 @@ describe('persistence mapping', () => {
     });
     expect(node.position).toEqual({ x: 12.5, y: 3 });
     expect(
-      edgeFromRow({ id: 'e', version_id: 'v', element_key: 'k', source_key: 'a', target_key: 'b', label: '', condition: '', branch: 'no' }),
+      edgeFromRow({
+        id: 'e',
+        version_id: 'v',
+        element_key: 'k',
+        source_key: 'a',
+        target_key: 'b',
+        label: '',
+        condition: '',
+        branch: 'no',
+      }),
     ).toMatchObject({ source: 'a', target: 'b', branch: 'no' });
   });
 });

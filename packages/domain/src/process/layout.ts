@@ -14,19 +14,18 @@ export const NODE_DIMENSIONS: Record<ProcessNodeType, { width: number; height: n
 };
 
 /**
+ * Process maps flow top to bottom: the designer's canvas sits between two
+ * side panels, so it is taller than it is wide.
+ *
  * Computes top-left positions for every node with Dagre. Returns a new node
  * array; the input is not modified. Edges pointing at unknown nodes are
  * ignored rather than letting Dagre invent placeholder nodes.
  */
-export function layoutGraph<T extends ProcessNode>(
-  nodes: T[],
-  edges: ProcessEdge[],
-  direction: LayoutDirection = 'LR',
-): T[] {
+export function layoutGraph<T extends ProcessNode>(nodes: T[], edges: ProcessEdge[], direction: LayoutDirection = 'TB'): T[] {
   if (nodes.length === 0) return [];
 
   const g = new Graph({ multigraph: true });
-  g.setGraph({ rankdir: direction, nodesep: 48, ranksep: 72, marginx: 24, marginy: 24 });
+  g.setGraph({ rankdir: direction, nodesep: 56, ranksep: 64, marginx: 24, marginy: 24 });
   g.setDefaultEdgeLabel(() => ({}));
 
   for (const node of nodes) {

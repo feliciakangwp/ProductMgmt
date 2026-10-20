@@ -141,7 +141,9 @@ describe('validateProcess', () => {
     task.actorId = 'deleted-actor';
     expect(codes(graph, { actors: [{ id: 'actor', name: 'Officer', kind: 'role' }] })).toContain('MISSING_ACTOR');
     // Start, end and system activities do not need a human actor.
-    expect(validateProcess({ ...graph, nodes: graph.nodes.filter((n) => n !== task) }).some((i) => i.code === 'MISSING_ACTOR')).toBe(false);
+    expect(
+      validateProcess({ ...graph, nodes: graph.nodes.filter((n) => n !== task) }).some((i) => i.code === 'MISSING_ACTOR'),
+    ).toBe(false);
   });
 
   it('reports connections to deleted nodes', () => {

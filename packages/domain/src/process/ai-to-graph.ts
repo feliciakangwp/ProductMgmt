@@ -88,9 +88,7 @@ export function analysisToProposal(analysis: ProcessAnalysis): ProcessProposal {
     sourceText: finding.sourceText,
     origin: finding.origin,
     status: 'draft',
-    relatedNodeKeys: finding.relatedStepIds
-      .map((id) => keyByStepId.get(id))
-      .filter((key): key is string => Boolean(key)),
+    relatedNodeKeys: finding.relatedStepIds.map((id) => keyByStepId.get(id)).filter((key): key is string => Boolean(key)),
   }));
 
   return {

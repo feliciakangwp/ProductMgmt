@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+e2e/.cache
+e2e/.stack
+e2e/test-results
+playwright-report
+package-lock.json
+supabase/migrations
+supabase/tests

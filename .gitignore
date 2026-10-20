@@ -9,3 +9,5 @@ test-results/
 .supabase/
 supabase/.temp/
 .DS_Store
+e2e/.cache/
+e2e/.stack/

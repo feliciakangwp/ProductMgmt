@@ -123,11 +123,12 @@ describe('analysisToProposal', () => {
     expect(proposal.findings.every((f) => f.status === 'draft')).toBe(true);
   });
 
-  it('lays nodes out left to right', () => {
+  it('lays nodes out top to bottom in flow order', () => {
     const proposal = analysisToProposal(DEBT_WRITE_OFF_ANALYSIS);
-    const start = proposal.nodes.find((n) => n.type === 'start')!;
-    const retrieve = proposal.nodes[1]!;
-    expect(retrieve.position.x).toBeGreaterThan(start.position.x);
+    const y = (label: string) => proposal.nodes.find((n) => n.label === label)!.position.y;
+    expect(y('Retrieve debt record')).toBeGreaterThan(y('Write-off request received'));
+    expect(y('Outstanding more than five years?')).toBeGreaterThan(y('Retrieve debt record'));
+    expect(y('Debt written off')).toBeGreaterThan(y('Update debt status to Written Off'));
   });
 
   it('does not invent start or end events', () => {
