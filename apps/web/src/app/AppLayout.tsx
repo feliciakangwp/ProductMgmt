@@ -4,7 +4,7 @@ import { Link, Outlet, useMatch, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthProvider';
 import { Select } from '../components/ui';
 import { safeStorage } from '../lib/storage';
-import { supabase } from '../lib/supabase';
+import { backend } from '../lib/backend';
 import { useProjects } from '../modules/projects/api';
 import { Sidebar } from './Sidebar';
 
@@ -56,7 +56,7 @@ function TopBar({ projectId }: { projectId: string | null }) {
   const navigate = useNavigate();
   const projects = useProjects();
   const [menuOpen, setMenuOpen] = useState(false);
-  const name = (session?.user.user_metadata?.display_name as string | undefined) || session?.user.email || '';
+  const name = session?.displayName ?? '';
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-5">
@@ -103,7 +103,7 @@ function TopBar({ projectId }: { projectId: string | null }) {
               type="button"
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
               onClick={async () => {
-                await supabase.auth.signOut();
+                await backend.auth.signOut();
                 navigate('/login');
               }}
             >

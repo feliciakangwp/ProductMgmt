@@ -109,7 +109,7 @@ export function MembersPage() {
                 <tr key={m.userId}>
                   <td className="px-4 py-3">
                     <p className="font-medium text-slate-900">
-                      {m.displayName} {m.userId === session?.user.id ? <Badge className="ml-1">You</Badge> : null}
+                      {m.displayName} {m.userId === session?.userId ? <Badge className="ml-1">You</Badge> : null}
                     </p>
                     <p className="text-xs text-slate-500">{m.email}</p>
                   </td>

@@ -1,20 +1,9 @@
-import type { ProjectRole, ProjectRow } from '@productflow/domain';
+import type { ProjectRole } from '@productflow/domain';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../auth/AuthProvider';
-import { fromPostgrest } from '../../lib/errors';
-import { supabase } from '../../lib/supabase';
+import { backend } from '../../lib/backend';
 
-export interface ProjectWithRole extends ProjectRow {
-  role: ProjectRole;
-}
-
-export interface Member {
-  userId: string;
-  role: ProjectRole;
-  displayName: string;
-  email: string;
-  createdAt: string;
-}
+export type { Member, ProjectWithRole } from '../../lib/backend';
 
 export const projectKeys = {
   all: ['projects'] as const,
@@ -23,21 +12,11 @@ export const projectKeys = {
 
 export function useProjects() {
   const { session } = useAuth();
-  const userId = session?.user.id;
+  const userId = session?.userId;
   return useQuery({
     queryKey: [...projectKeys.all, userId],
     enabled: Boolean(userId),
-    queryFn: async (): Promise<ProjectWithRole[]> => {
-      const { data, error } = await supabase.from('project_members').select('role, projects(*)').eq('user_id', userId!);
-      if (error) throw fromPostgrest(error);
-      return (data ?? [])
-        .map((row) => {
-          const project = (Array.isArray(row.projects) ? row.projects[0] : row.projects) as ProjectRow | null;
-          return project ? { ...project, role: row.role as ProjectRole } : null;
-        })
-        .filter((p): p is ProjectWithRole => p !== null)
-        .sort((a, b) => a.name.localeCompare(b.name));
-    },
+    queryFn: () => backend.listMyProjects(userId!),
   });
 }
 
@@ -49,15 +28,7 @@ export function useProject(projectId: string | undefined) {
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { key: string; name: string; description: string }) => {
-      const { data, error } = await supabase.rpc('create_project', {
-        p_key: input.key,
-        p_name: input.name,
-        p_description: input.description,
-      });
-      if (error) throw fromPostgrest(error);
-      return data as ProjectRow;
-    },
+    mutationFn: (input: { key: string; name: string; description: string }) => backend.createProject(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.all }),
   });
 }
@@ -65,43 +36,13 @@ export function useCreateProject() {
 export function useUpdateProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id: string; name: string; description: string }) => {
-      const { error, count } = await supabase
-        .from('projects')
-        .update({ name: input.name, description: input.description }, { count: 'exact' })
-        .eq('id', input.id);
-      if (error) throw fromPostgrest(error);
-      if (count === 0) throw new Error('Only project administrators can change project details.');
-    },
+    mutationFn: (input: { id: string; name: string; description: string }) => backend.updateProject(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.all }),
   });
 }
 
 export function useMembers(projectId: string) {
-  return useQuery({
-    queryKey: projectKeys.members(projectId),
-    queryFn: async (): Promise<Member[]> => {
-      const { data, error } = await supabase
-        .from('project_members')
-        .select('user_id, role, created_at, profiles!project_members_user_id_fkey(display_name, email)')
-        .eq('project_id', projectId)
-        .order('created_at');
-      if (error) throw fromPostgrest(error);
-      return (data ?? []).map((row) => {
-        const profile = (Array.isArray(row.profiles) ? row.profiles[0] : row.profiles) as {
-          display_name: string;
-          email: string;
-        } | null;
-        return {
-          userId: row.user_id as string,
-          role: row.role as ProjectRole,
-          createdAt: row.created_at as string,
-          displayName: profile?.display_name ?? 'Unknown user',
-          email: profile?.email ?? '',
-        };
-      });
-    },
-  });
+  return useQuery({ queryKey: projectKeys.members(projectId), queryFn: () => backend.listMembers(projectId) });
 }
 
 function useMemberMutation<T>(projectId: string, fn: (input: T) => Promise<void>) {
@@ -116,30 +57,17 @@ function useMemberMutation<T>(projectId: string, fn: (input: T) => Promise<void>
 }
 
 export function useAddMember(projectId: string) {
-  return useMemberMutation(projectId, async (input: { email: string; role: ProjectRole }) => {
-    const { error } = await supabase.rpc('add_project_member', {
-      p_project_id: projectId,
-      p_email: input.email,
-      p_role: input.role,
-    });
-    if (error) throw fromPostgrest(error);
-  });
+  return useMemberMutation(projectId, (input: { email: string; role: ProjectRole }) =>
+    backend.addMember(projectId, input.email, input.role),
+  );
 }
 
 export function useUpdateMemberRole(projectId: string) {
-  return useMemberMutation(projectId, async (input: { userId: string; role: ProjectRole }) => {
-    const { error } = await supabase.rpc('update_member_role', {
-      p_project_id: projectId,
-      p_user_id: input.userId,
-      p_role: input.role,
-    });
-    if (error) throw fromPostgrest(error);
-  });
+  return useMemberMutation(projectId, (input: { userId: string; role: ProjectRole }) =>
+    backend.updateMemberRole(projectId, input.userId, input.role),
+  );
 }
 
 export function useRemoveMember(projectId: string) {
-  return useMemberMutation(projectId, async (input: { userId: string }) => {
-    const { error } = await supabase.rpc('remove_project_member', { p_project_id: projectId, p_user_id: input.userId });
-    if (error) throw fromPostgrest(error);
-  });
+  return useMemberMutation(projectId, (input: { userId: string }) => backend.removeMember(projectId, input.userId));
 }

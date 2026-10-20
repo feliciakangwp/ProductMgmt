@@ -3,7 +3,10 @@
   "compilerOptions": {
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": ["vite/client", "@testing-library/jest-dom/vitest"]
+    "types": ["vite/client", "@testing-library/jest-dom/vitest"],
+    "paths": {
+      "@backend": ["./src/lib/backend/supabase.ts"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }

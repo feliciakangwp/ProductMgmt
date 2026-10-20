@@ -13,13 +13,14 @@ import { ArrowLeft, CheckCircle2, CopyPlus, Pencil, Redo2, Save, Undo2 } from 'l
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { Link, useBlocker, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Alert, Badge, Button, Dialog, IconButton, Select, Spinner } from '../../components/ui';
-import { analyseProcess, type AnalysisResponse } from '../../lib/api';
+
 import { errorMessage, isConflict } from '../../lib/errors';
 import { PROCESS_TYPE_LABELS } from '../processes/api';
 import { ProcessDetailsFields, type ProcessDetails } from '../processes/ProcessDetailsForm';
 import { VersionStatusBadge } from '../processes/VersionStatusBadge';
 import { useProject, type ProjectWithRole } from '../projects/api';
 import {
+  analyseProcess,
   approveVersion,
   createDraftFromVersion,
   designerKeys,
@@ -30,6 +31,7 @@ import {
   useProcessDetail,
   useUpdateProcessDetails,
   useVersionContent,
+  type AnalysisResponse,
   type ProcessDetail,
   type VersionContent,
 } from './api';

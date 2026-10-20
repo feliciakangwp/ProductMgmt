@@ -7,3 +7,4 @@ export * from './process/layout';
 export * from './process/validation';
 export * from './process/graph-ops';
 export * from './process/persistence';
+export * from './process/ai-prompt';

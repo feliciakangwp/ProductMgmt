@@ -11,7 +11,7 @@ import { Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Alert, Badge, Button, Dialog } from '../../components/ui';
 import { errorMessage } from '../../lib/errors';
-import type { AnalysisResponse } from '../../lib/api';
+import type { AnalysisResponse } from './api';
 import { ProcessCanvas } from './ProcessCanvas';
 
 const noop = () => undefined;

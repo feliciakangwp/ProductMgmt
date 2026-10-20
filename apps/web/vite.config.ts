@@ -1,10 +1,19 @@
 /// <reference types="vitest/config" />
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      // The demo build runs entirely in the browser; see src/lib/backend/demo.ts.
+      '@backend': fileURLToPath(
+        new URL(mode === 'demo' ? './src/lib/backend/demo.ts' : './src/lib/backend/supabase.ts', import.meta.url),
+      ),
+    },
+  },
   server: {
     port: 5173,
     // The API runs separately; proxy it so the browser only talks to one origin in development.
@@ -18,4 +27,4 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,
   },
-});
+}));

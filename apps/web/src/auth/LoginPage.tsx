@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation } from 'react-router';
 import { Alert, Button, Field, Input } from '../components/ui';
-import { supabase } from '../lib/supabase';
+import { backend } from '../lib/backend';
+import { errorMessage } from '../lib/errors';
 import { Logo } from '../app/Logo';
 import { useAuth } from './AuthProvider';
 
@@ -26,17 +27,15 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     setNotice(null);
-    if (mode === 'signin') {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) setError(error.message);
-    } else {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { display_name: displayName.trim() } },
-      });
-      if (error) setError(error.message);
-      else if (!data.session) setNotice('Check your email to confirm your account, then sign in.');
+    try {
+      if (mode === 'signin') {
+        await backend.auth.signIn(email, password);
+      } else {
+        const { needsConfirmation } = await backend.auth.signUp(email, password, displayName.trim());
+        if (needsConfirmation) setNotice('Check your email to confirm your account, then sign in.');
+      }
+    } catch (err) {
+      setError(errorMessage(err));
     }
     setBusy(false);
   }

@@ -1,9 +1,8 @@
-import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { supabase } from '../lib/supabase';
+import { backend, type SessionInfo } from '../lib/backend';
 
 interface AuthState {
-  session: Session | null;
+  session: SessionInfo | null;
   loading: boolean;
 }
 
@@ -14,15 +13,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (active) setState({ session: data.session, loading: false });
+    backend.auth.getSession().then((session) => {
+      if (active) setState({ session, loading: false });
     });
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setState({ session, loading: false });
-    });
+    const unsubscribe = backend.auth.onChange((session) => setState({ session, loading: false }));
     return () => {
       active = false;
-      data.subscription.unsubscribe();
+      unsubscribe();
     };
   }, []);
 
@@ -31,10 +28,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   return useContext(AuthContext);
-}
-
-export function useUserId(): string {
-  const { session } = useAuth();
-  if (!session) throw new Error('useUserId called outside an authenticated route');
-  return session.user.id;
 }
