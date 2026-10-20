@@ -147,7 +147,10 @@ export function createSupabaseDeliveryStore(db: SupabaseClient): ApiDeliveryStor
         byProject('physical_columns'),
         byProject('field_column_mappings'),
         rows<{ user_id: string; role: ProjectRole; profiles: { display_name: string } | { display_name: string }[] | null }>(
-          db.from('project_members').select('user_id, role, profiles!project_members_user_id_fkey(display_name)').eq('project_id', projectId),
+          db
+            .from('project_members')
+            .select('user_id, role, profiles!project_members_user_id_fkey(display_name)')
+            .eq('project_id', projectId),
         ),
       ]);
       if (project.error) dbError(project.error);
