@@ -3,7 +3,12 @@
 // API key. It answers with the reference debt write-off fixtures, choosing the
 // task from the requested output schema.
 import http from 'node:http';
-import { DEBT_WRITE_OFF_ANALYSIS, fieldSuggestionsForPrompt, OUTSTANDING_AMOUNT_TRANSLATION } from '@productflow/domain/testing';
+import {
+  DEBT_WRITE_OFF_ANALYSIS,
+  deliveryAnswerFor,
+  fieldSuggestionsForPrompt,
+  OUTSTANDING_AMOUNT_TRANSLATION,
+} from '@productflow/domain/testing';
 
 const port = Number(process.env.MOCK_ANTHROPIC_PORT ?? 4010);
 
@@ -50,6 +55,8 @@ function answerFor(request: {
   output_config?: { format?: { schema?: { properties?: Record<string, unknown> } } };
 }): unknown {
   const properties = request.output_config?.format?.schema?.properties ?? {};
+  const delivery = deliveryAnswerFor(properties, request.messages[0]?.content ?? '');
+  if (delivery) return delivery;
   if ('activities' in properties) return fieldSuggestionsForPrompt(request.messages[0]?.content ?? '');
   if ('rules' in properties) return OUTSTANDING_AMOUNT_TRANSLATION;
   return DEBT_WRITE_OFF_ANALYSIS;
