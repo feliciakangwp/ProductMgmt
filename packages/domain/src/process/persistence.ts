@@ -50,6 +50,8 @@ export interface ProcessVersionRow {
   status: VersionStatus;
   description: string;
   revision: number;
+  /** Optimistic-locking revision of the version's data requirements (Phase 2). */
+  data_revision: number;
   based_on_version_id: string | null;
   created_by: string;
   created_at: string;

@@ -3,6 +3,7 @@ import {
   PROJECT_ROLE_LABELS,
   resolveProposalActors,
   toSavePayload,
+  validateDataRequirements,
   validateProcess,
   type ProcessVersionRow,
 } from '@productflow/domain';
@@ -35,6 +36,7 @@ import {
   type ProcessDetail,
   type VersionContent,
 } from './api';
+import { useFields, useValidationRules, useVersionData } from '../data-requirements/api';
 import { ApproveDialog } from './ApproveDialog';
 import { DescriptionPanel } from './DescriptionPanel';
 import { designerReducer, initialDesignerState, type DesignerState } from './designer-state';
@@ -151,6 +153,21 @@ function DesignerWorkspace({
     return found;
   });
 
+  const versionData = useVersionData(version.id);
+  const dictionary = useFields(project.id);
+  const validationRules = useValidationRules(project.id);
+  const dataIssues = useMemo(
+    () =>
+      versionData.data && dictionary.data && validationRules.data
+        ? validateDataRequirements({
+            graph: state.graph,
+            requirements: versionData.data.requirements,
+            fields: dictionary.data,
+            rules: validationRules.data,
+          })
+        : [],
+    [versionData.data, dictionary.data, validationRules.data, state.graph],
+  );
   const issues = useMemo(
     () => validateProcess({ ...state.graph, actors: actors.data, findings: state.findings }),
     [state.graph, state.findings, actors.data],
@@ -541,6 +558,12 @@ function DesignerWorkspace({
                 selection={state.selection}
                 readOnly={readOnly}
                 dispatch={dispatch}
+                dataLink={(key) =>
+                  // Only activities that exist in the saved map have data requirements.
+                  content.graph.nodes.some((n) => n.elementKey === key)
+                    ? `/projects/${project.id}/data/processes/${process.id}?version=${version.id}&activity=${key}`
+                    : null
+                }
               />
             ) : tab === 'validation' ? (
               <ValidationPanel issues={issues} dispatch={dispatch} />
@@ -562,6 +585,7 @@ function DesignerWorkspace({
       ) : null}
 
       <ApproveDialog
+        dataIssues={dataIssues}
         open={approving}
         versionNumber={version.version_number}
         issues={issues}

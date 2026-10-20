@@ -296,3 +296,21 @@ export function translationToProposal(translation: RuleTranslation, dictionary: 
     questions: translation.questions,
   };
 }
+
+/**
+ * The register rule a proposed business rule repeats, if any: same title or
+ * same statement once case and spacing are ignored. Used to avoid recording
+ * one business rule twice.
+ */
+export function findDuplicateBusinessRule<T extends { title: string; statement: string; status: string }>(
+  draft: { title: string; statement: string },
+  register: T[],
+): T | undefined {
+  const title = normaliseName(draft.title);
+  const statement = normaliseName(draft.statement).replace(/[.!]+$/, '');
+  return register.find(
+    (r) =>
+      r.status !== 'retired' &&
+      (normaliseName(r.title) === title || normaliseName(r.statement).replace(/[.!]+$/, '') === statement),
+  );
+}

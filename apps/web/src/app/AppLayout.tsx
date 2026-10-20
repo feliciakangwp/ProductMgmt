@@ -15,7 +15,10 @@ const SIDEBAR_KEY = 'productflow:sidebarCollapsed';
 export function AppLayout() {
   const [preferCollapsed, setPreferCollapsed] = useState(() => safeStorage.get(SIDEBAR_KEY) === '1');
   // The process designer needs the width; collapse the sidebar there unless the user expands it.
-  const inDesigner = Boolean(useMatch('/projects/:projectId/processes/:processId'));
+  // Both hooks must run on every render; never short-circuit them.
+  const designerMatch = useMatch('/projects/:projectId/processes/:processId');
+  const dataEditorMatch = useMatch('/projects/:projectId/data/processes/:processId');
+  const inDesigner = Boolean(designerMatch) || Boolean(dataEditorMatch);
   const [expandedInDesigner, setExpandedInDesigner] = useState(false);
   const small = useMediaQuery('(max-width: 767px)');
   const collapsed = inDesigner || small ? !expandedInDesigner : preferCollapsed;

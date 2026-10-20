@@ -10,6 +10,7 @@ import { Spinner } from '../components/ui';
 import { useProjects } from '../modules/projects/api';
 import { AppLayout, LAST_PROJECT_KEY } from './AppLayout';
 import { RequireAuth } from './RequireAuth';
+import { RouteError } from './RouteError';
 
 /** Opens the last project used, or the only project, or the project list. */
 function HomeRedirect() {
@@ -32,6 +33,7 @@ export const router = createRouter([
         <AppLayout />
       </RequireAuth>
     ),
+    errorElement: <RouteError />,
     children: [
       { index: true, element: <HomeRedirect /> },
       { path: 'projects', element: <ProjectsPage /> },
@@ -42,6 +44,22 @@ export const router = createRouter([
         path: 'projects/:projectId/processes/:processId',
         // React Flow and the designer are the bulk of the bundle; load them on demand.
         lazy: () => import('../modules/process-designer/DesignerPage').then((m) => ({ Component: m.DesignerPage })),
+      },
+      {
+        path: 'projects/:projectId/data',
+        lazy: () => import('../modules/data-requirements/DataHomePage').then((m) => ({ Component: m.DataHomePage })),
+      },
+      {
+        path: 'projects/:projectId/data/processes/:processId',
+        lazy: () => import('../modules/data-requirements/IoEditorPage').then((m) => ({ Component: m.IoEditorPage })),
+      },
+      {
+        path: 'projects/:projectId/data/dictionary',
+        lazy: () => import('../modules/data-requirements/DictionaryPage').then((m) => ({ Component: m.DictionaryPage })),
+      },
+      {
+        path: 'projects/:projectId/data/rules',
+        lazy: () => import('../modules/data-requirements/BusinessRulesPage').then((m) => ({ Component: m.BusinessRulesPage })),
       },
       { path: 'modules/:slug', element: <ComingSoonPage /> },
       { path: '*', element: <ComingSoonPage /> },

@@ -74,16 +74,37 @@ draft copies rows without remapping ids.
 `element_key` and one ref code. Links from later modules follow an activity across versions, and Phase 7's
 change-impact analysis can compare versions element by element.
 
+### Data requirements (Phase 2)
+
+| Table                      | Purpose                                                                                                                                                                                                                                                                     |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `field_definitions`        | The project's data dictionary of **logical** business fields (`FLD-001`…): type, allowed values, default, source (user-entered / system-generated / retrieved), status (draft / confirmed / deprecated), origin                                                             |
+| `physical_columns`         | Columns in physical systems, kept separate from logical fields                                                                                                                                                                                                              |
+| `field_column_mappings`    | Many-to-many field ↔ column, with an optional transformation (e.g. "Outstanding Amount = (principal + interest) / 100")                                                                                                                                                     |
+| `validation_rules`         | Rules on a field (`VR-001`…): type (required, format, range, length, conditional, cross-field, lookup, duplicate, custom), structured parameters, statement, error message, the analyst's original wording, draft/confirmed, optional link to the business rule it enforces |
+| `business_rules`           | One register of business rules (`BR-001`…), draft / approved / retired, optionally promoted from a process finding (kept as `source_finding_key`)                                                                                                                           |
+| `business_rule_activities` | Links rules to activities by process and element key, so links survive new process versions                                                                                                                                                                                 |
+| `activity_fields`          | Per process **version**: which dictionary fields each activity reads (input) or produces (output), mandatory yes/no/conditional with the condition                                                                                                                          |
+| `activity_outputs`         | Per process version: other outputs (record updates, generated documents, notifications, status changes). The next activity is not stored: it comes from the map                                                                                                             |
+| `ai_task_runs`             | Every field-suggestion and rule-translation call                                                                                                                                                                                                                            |
+
+Activity inputs and outputs follow the process version lifecycle: editable in a draft (`save_version_data`, with its own
+`data_revision` for optimistic locking), frozen by triggers once the version is approved, copied into new drafts, and
+removed with an activity that is removed from the map (foreign key cascade). Dictionary fields, validation rules and
+business rules are project-level reference data with their own `revision` for optimistic locking; a field used by any
+activity cannot be deleted (deprecate it), an approved business rule cannot be reworded or deleted (return it to draft,
+or retire it), and only Product Owners and Administrators approve business rules (enforced by trigger).
+
 ### Planned tables (later phases)
 
-| Phase | Tables                                                                                                                                                                                               |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2     | `field_definitions` (data dictionary of logical fields), `activity_fields` (activity ↔ field, input/output, mandatory condition), `validation_rules`, `business_rules`, `physical_columns` + mapping |
-| 3     | `stories` (functional/technical, versioned), `story_activities`, `story_fields`, `story_rules`, `story_dependencies`                                                                                 |
-| 4     | `sprints`, `sprint_items` (a story keeps its backlog record), `status_transitions`, `effort_logs`                                                                                                    |
-| 5–6   | `business_scenarios`, `scenario_steps`, `scenario_tech_stories`, `test_executions` (append-only), `step_results`, `defects`, `defect_links`                                                          |
+| Phase | Tables                                                                                                                                      |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3     | `stories` (functional/technical, versioned), `story_activities`, `story_fields`, `story_rules`, `story_dependencies`                        |
+| 4     | `sprints`, `sprint_items` (a story keeps its backlog record), `status_transitions`, `effort_logs`                                           |
+| 5–6   | `business_scenarios`, `scenario_steps`, `scenario_tech_stories`, `test_executions` (append-only), `step_results`, `defects`, `defect_links` |
 
-Accepted `business_rule` findings from Phase 1 become the seed of the Phase 2 `business_rules` register.
+Business-rule findings from process analysis are promoted into the `business_rules` register (once each, via
+`promote_finding_to_business_rule`), so a rule identified in a description is recorded in one place.
 
 **Traceability.** Each relationship gets its own typed link table so the database enforces integrity; a
 `trace_graph` view will union them into `(source_type, source_id, target_type, target_id)` rows, so "select an
@@ -105,15 +126,17 @@ activity and see everything linked to it" becomes one recursive query.
 Error codes raised by database functions: `PF409` conflict, `PF422` invalid, `PF423` locked version,
 `42501` permission denied, `P0002` not found.
 
-## 4. Permissions (Phase 1)
+## 4. Permissions
 
-| Action                                 | Admin | Product Owner | Business Analyst | Developer | Business User |
-| -------------------------------------- | :---: | :-----------: | :--------------: | :-------: | :-----------: |
-| Read project processes                 |   ✓   |       ✓       |        ✓         |     ✓     |       ✓       |
-| Create/edit processes, run AI analysis |   ✓   |               |        ✓         |           |               |
-| Approve a process version              |   ✓   |       ✓       |                  |           |               |
-| Manage members, rename project         |   ✓   |               |                  |           |               |
-| Read audit log                         |   ✓   |       ✓       |                  |           |               |
+| Action                                                   | Admin | Product Owner | Business Analyst | Developer | Business User |
+| -------------------------------------------------------- | :---: | :-----------: | :--------------: | :-------: | :-----------: |
+| Read project processes                                   |   ✓   |       ✓       |        ✓         |     ✓     |       ✓       |
+| Create/edit processes, run AI analysis                   |   ✓   |               |        ✓         |           |               |
+| Approve a process version                                |   ✓   |       ✓       |                  |           |               |
+| Manage members, rename project                           |   ✓   |               |                  |           |               |
+| Read audit log                                           |   ✓   |       ✓       |                  |           |               |
+| Edit fields, rules, inputs & outputs; run AI suggestions |   ✓   |               |        ✓         |           |               |
+| Approve a business rule                                  |   ✓   |       ✓       |                  |           |               |
 
 The same matrix lives in `packages/domain/src/roles.ts` (UI) and in the RLS policies and RPC checks (enforcement).
 
@@ -129,7 +152,17 @@ The same matrix lives in `packages/domain/src/roles.ts` (UI) and in the RLS poli
 5. The web app shows the proposal; on accept, missing actors are created and the map enters the draft editor
    unsaved, and undoable.
 
-The prompt (`apps/api/src/ai/prompt.ts`) instructs Claude to build the model only from the description, mark
+Phase 2 adds two structured tasks on the same runner (`ClaudeStructuredRunner` in `apps/api/src/ai/analyser.ts`):
+
+- `POST /api/field-suggestions` `{ versionId, nodeKeys? }`: proposes input/output fields and other outputs per activity.
+  The prompt lists the activities (with short ids A1, A2…), the existing dictionary (so fields are reused by ref code)
+  and the business rules already recorded. `suggestionsToProposal` reuses existing fields by ref code or name and
+  proposes each new field once across activities. The analyst ticks what to add; new fields are created as drafts.
+- `POST /api/rule-translation` `{ fieldId, text }`: turns plain-language validation logic into structured rules
+  and, where the text states policy, business rules. Proposed business rules that repeat a register entry are
+  flagged and left unticked. Everything is added as a draft for the analyst to confirm.
+
+The prompts (in `packages/domain`, shared with the demo) instruct Claude to build the model only from the description, mark
 anything else as inferred, record gaps as questions, and treat the description as data rather than instructions.
 `ANTHROPIC_MODEL` and `ANALYSIS_EFFORT` are configurable.
 
@@ -164,7 +197,17 @@ e2e/
 docs/         This document and the setup guide
 ```
 
-## 8. Phase 1 scope
+## 8. Delivered scope
+
+### Phase 2 (data requirements)
+
+Input & Output Designer with three views: **Activities** (per process version: input and output fields with
+mandatory/conditional rules, other outputs, the next activity from the map, live checks, AI suggestions with review),
+**Data dictionary** (search, status, rules, physical column mappings, where each field is used across process versions),
+and **Business rules** (register with approval, activity links, and import from process findings). The Process Designer
+links each activity to its inputs and outputs, and approval lists open data-requirement issues for acknowledgement.
+
+### Phase 1 (process design)
 
 Delivered: application shell and navigation (future modules marked Coming Soon), authentication, projects and
 member roles, process creation and description editing, Claude analysis with review-before-accept, interactive
@@ -172,5 +215,12 @@ React Flow map (start/end/activity/decision/approval/system nodes, yes/no branch
 connect and reconnect, delete, undo/redo, automatic layout, zoom and pan), properties panel, findings review,
 live validation, save and reopen with optimistic locking and crash recovery, approval and versioning.
 
-Not in Phase 1 by design: fields, stories, backlog, sprints, testing, defects, analytics and organisation-wide
-user administration. They appear in the navigation as Coming Soon.
+Not built yet by design: stories, backlog, sprints, testing, defects, analytics and organisation-wide user
+administration. They appear in the navigation as Coming Soon.
+
+### Demo build
+
+`npm run build:demo --workspace @productflow/web` builds the whole app as one self-contained page that runs without a
+server: `src/lib/backend/demo.ts` implements the same backend interface in the browser (with the database's rules
+re-implemented and unit-tested) and calls Claude through the Claude artifact runtime. It is published as a shareable
+link for demonstrations; it is not a deployment target.

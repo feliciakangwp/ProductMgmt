@@ -1,6 +1,17 @@
 import type {
   Actor,
   ActorKind,
+  BusinessRule,
+  BusinessRuleCategory,
+  DataProposal,
+  FieldColumnMapping,
+  FieldDefinition,
+  FindingRef,
+  PhysicalColumn,
+  RuleTranslationProposal,
+  SaveDataPayload,
+  ValidationRule,
+  VersionDataRequirements,
   ProcessFinding,
   ProcessGraph,
   ProcessProposal,
@@ -87,6 +98,57 @@ export interface AuthApi {
   signOut(): Promise<void>;
 }
 
+export type NewFieldInput = Pick<
+  FieldDefinition,
+  'name' | 'description' | 'dataType' | 'allowedValues' | 'defaultValue' | 'source' | 'sourceDetail' | 'origin'
+> & { status?: FieldDefinition['status'] };
+
+export type ValidationRuleInput = Omit<ValidationRule, 'id' | 'refCode'>;
+
+export type BusinessRuleInput = Pick<BusinessRule, 'title' | 'statement' | 'category' | 'origin' | 'activities'>;
+
+/** Where a dictionary field is used: one activity in one process version. */
+export interface FieldUsage {
+  fieldId: string;
+  direction: 'input' | 'output';
+  processId: string;
+  processRef: string;
+  processName: string;
+  versionId: string;
+  versionNumber: number;
+  versionStatus: ProcessVersionRow['status'];
+  nodeKey: string;
+  nodeRef: string | null;
+  nodeLabel: string;
+}
+
+/** A business-rule finding from a process that can be promoted into the rule register. */
+export interface PromotableFinding extends FindingRef {
+  processId: string;
+  processRef: string;
+  processName: string;
+  versionNumber: number;
+  statement: string;
+  promoted: boolean;
+}
+
+export interface VersionData {
+  dataRevision: number;
+  requirements: VersionDataRequirements;
+}
+
+export interface DataSuggestionResponse {
+  runId: string;
+  model: string;
+  proposal: DataProposal;
+}
+
+export interface RuleTranslationResponse {
+  runId: string;
+  model: string;
+  proposal: RuleTranslationProposal;
+}
+
 /** Extra controls only the in-browser demo offers. */
 export interface DemoControls {
   /** Discards everything the viewer changed and restores the example data. */
@@ -125,4 +187,38 @@ export interface Backend {
   ensureActors(projectId: string, actors: ProposedActor[]): Promise<Actor[]>;
 
   analyseProcess(args: { versionId: string; description: string }, signal?: AbortSignal): Promise<AnalysisResponse>;
+
+  // Phase 2: data requirements
+  listFields(projectId: string): Promise<FieldDefinition[]>;
+  createFields(projectId: string, fields: NewFieldInput[]): Promise<FieldDefinition[]>;
+  /** Fails with PF409 when the field changed since `field.revision` was read. */
+  updateField(field: FieldDefinition): Promise<FieldDefinition>;
+  deleteField(fieldId: string): Promise<void>;
+  listFieldUsages(projectId: string): Promise<FieldUsage[]>;
+
+  listValidationRules(projectId: string): Promise<ValidationRule[]>;
+  createValidationRule(projectId: string, input: ValidationRuleInput): Promise<ValidationRule>;
+  updateValidationRule(rule: ValidationRule): Promise<ValidationRule>;
+  deleteValidationRule(ruleId: string): Promise<void>;
+
+  listPhysicalColumns(projectId: string): Promise<PhysicalColumn[]>;
+  createPhysicalColumn(projectId: string, input: Omit<PhysicalColumn, 'id'>): Promise<PhysicalColumn>;
+  deletePhysicalColumn(columnId: string): Promise<void>;
+  listColumnMappings(projectId: string): Promise<FieldColumnMapping[]>;
+  addColumnMapping(projectId: string, mapping: FieldColumnMapping): Promise<void>;
+  removeColumnMapping(fieldId: string, columnId: string): Promise<void>;
+
+  listBusinessRules(projectId: string): Promise<BusinessRule[]>;
+  createBusinessRule(projectId: string, input: BusinessRuleInput): Promise<BusinessRule>;
+  /** Saves wording, category, status and activity links. Fails with PF409 on a stale revision. */
+  updateBusinessRule(rule: BusinessRule): Promise<BusinessRule>;
+  deleteBusinessRule(ruleId: string): Promise<void>;
+  listPromotableFindings(projectId: string): Promise<PromotableFinding[]>;
+  promoteFinding(input: FindingRef & { title: string; category: BusinessRuleCategory }): Promise<string>;
+
+  getVersionData(versionId: string): Promise<VersionData>;
+  saveVersionData(payload: SaveDataPayload): Promise<number>;
+
+  suggestFields(args: { versionId: string; nodeKeys?: string[] }, signal?: AbortSignal): Promise<DataSuggestionResponse>;
+  translateValidationRule(args: { fieldId: string; text: string }, signal?: AbortSignal): Promise<RuleTranslationResponse>;
 }

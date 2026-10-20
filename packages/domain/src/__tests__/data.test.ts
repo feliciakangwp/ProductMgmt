@@ -7,6 +7,7 @@ import {
   buildSuggestionContext,
   EMPTY_RULE_PARAMS,
   fieldSuggestionsJsonSchema,
+  findDuplicateBusinessRule,
   parseFieldSuggestions,
   parseRuleTranslation,
   requirementsFromRows,
@@ -380,6 +381,21 @@ describe('validateDataRequirements', () => {
       outputs: [],
     };
     expect(validateDataRequirements({ graph, requirements, fields: [confirmed], rules: [rule({})] })).toEqual([]);
+  });
+});
+
+describe('findDuplicateBusinessRule', () => {
+  it('matches by title or statement, ignoring case, spacing and a final full stop', () => {
+    const register = [
+      { title: 'Director approval above $10,000', statement: 'Requests over $10,000 need Director approval.', status: 'draft' },
+      { title: 'Old rule', statement: 'Something retired', status: 'retired' },
+    ];
+    expect(findDuplicateBusinessRule({ title: 'director  approval above $10,000', statement: 'x' }, register)).toBe(register[0]);
+    expect(findDuplicateBusinessRule({ title: 'New', statement: 'requests over $10,000 need director approval' }, register)).toBe(
+      register[0],
+    );
+    expect(findDuplicateBusinessRule({ title: 'Old rule', statement: 'y' }, register)).toBeUndefined();
+    expect(findDuplicateBusinessRule({ title: 'Different', statement: 'Different' }, register)).toBeUndefined();
   });
 });
 

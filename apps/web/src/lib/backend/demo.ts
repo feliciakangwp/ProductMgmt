@@ -1,8 +1,34 @@
 import {
   analysisToProposal,
+  applyDataProposal,
+  buildFieldSuggestionPrompt,
   buildRetryMessage,
+  buildRuleTranslationPrompt,
+  buildSuggestionContext,
   buildUserMessage,
+  businessRuleFromRow,
+  columnFromRow,
+  EMPTY_RULE_PARAMS,
+  fieldFromRow,
+  fieldSuggestionsJsonSchema,
   findingFromRow,
+  parseFieldSuggestions,
+  parseRuleTranslation,
+  requirementsFromRows,
+  ruleFromRow,
+  ruleTranslationJsonSchema,
+  suggestionsToProposal,
+  toSaveDataPayload,
+  translationToProposal,
+  type ActivityFieldRow,
+  type ActivityOutputRow,
+  type BusinessRuleActivityRow,
+  type BusinessRuleRow,
+  type FieldDefinitionRow,
+  type ParseResult,
+  type PhysicalColumnRow,
+  type SaveDataPayload,
+  type ValidationRuleRow,
   graphFromRows,
   hasBlockingIssues,
   normaliseName,
@@ -22,10 +48,22 @@ import {
   type ProjectRole,
   type ProjectRow,
 } from '@productflow/domain';
-import { DEBT_WRITE_OFF_ANALYSIS, DEBT_WRITE_OFF_DESCRIPTION } from '@productflow/domain/testing';
+import { DEBT_WRITE_OFF_ANALYSIS, DEBT_WRITE_OFF_DESCRIPTION, fieldSuggestionsForPrompt } from '@productflow/domain/testing';
 import { AppError } from '../errors';
 import { safeStorage } from '../storage';
-import type { Backend, DemoControls, Member, ProcessSummary, SessionInfo } from './types';
+import { latestFindingPerKey } from './helpers';
+import type {
+  Backend,
+  BusinessRuleInput,
+  DemoControls,
+  FieldUsage,
+  Member,
+  NewFieldInput,
+  ProcessSummary,
+  PromotableFinding,
+  SessionInfo,
+  ValidationRuleInput,
+} from './types';
 
 /**
  * Demo backend: the whole app runs in the browser with no server. Data lives
@@ -44,8 +82,15 @@ interface DemoMember {
   created_at: string;
 }
 
+interface DemoMapping {
+  project_id: string;
+  field_id: string;
+  column_id: string;
+  transformation: string;
+}
+
 interface DemoState {
-  schema: 1;
+  schema: 2;
   users: DemoUser[];
   projects: ProjectRow[];
   members: DemoMember[];
@@ -57,9 +102,17 @@ interface DemoState {
   edges: ProcessEdgeRow[];
   findings: ProcessFindingRow[];
   runs: { id: string; version_id: string; accepted_at: string | null }[];
+  fields: FieldDefinitionRow[];
+  rules: ValidationRuleRow[];
+  columns: PhysicalColumnRow[];
+  mappings: DemoMapping[];
+  businessRules: BusinessRuleRow[];
+  ruleLinks: BusinessRuleActivityRow[];
+  activityFields: ActivityFieldRow[];
+  activityOutputs: ActivityOutputRow[];
 }
 
-const STORAGE_KEY = 'productflow-demo:v1';
+const STORAGE_KEY = 'productflow-demo:v2';
 export const DEMO_USER_ID = 'demo-user';
 const EDITORS: ProjectRole[] = ['admin', 'business_analyst'];
 const APPROVERS: ProjectRole[] = ['admin', 'product_owner'];
@@ -95,7 +148,7 @@ function nodePrefix(type: ProcessNodeRow['node_type']): string {
 function seed(): DemoState {
   const t = now();
   const state: DemoState = {
-    schema: 1,
+    schema: 2,
     users: [
       { userId: DEMO_USER_ID, email: 'you@demo.productflow', displayName: 'You (demo)' },
       { userId: 'user-priya', email: 'priya.shah@demo.productflow', displayName: 'Priya Shah' },
@@ -112,6 +165,14 @@ function seed(): DemoState {
     edges: [],
     findings: [],
     runs: [],
+    fields: [],
+    rules: [],
+    columns: [],
+    mappings: [],
+    businessRules: [],
+    ruleLinks: [],
+    activityFields: [],
+    activityOutputs: [],
   };
 
   const project: ProjectRow = {
@@ -154,6 +215,7 @@ function seed(): DemoState {
     findings: proposal.findings.map((f) => (f.kind === 'business_rule' ? { ...f, status: 'accepted' } : f)),
   });
   saveDraftIn(state, payload, DEMO_USER_ID);
+  seedDataRequirements(state, project.id, writeOff.processId, writeOff.versionId);
   const v1 = state.versions.find((v) => v.id === writeOff.versionId)!;
   v1.status = 'approved';
   v1.approved_by = 'user-priya';
@@ -176,7 +238,7 @@ function load(): DemoState {
   if (raw) {
     try {
       const parsed = JSON.parse(raw) as DemoState;
-      if (parsed.schema === 1) return parsed;
+      if (parsed.schema === 2) return parsed;
     } catch {
       /* fall through to a fresh seed */
     }
@@ -237,6 +299,7 @@ function addProcess(
     status: 'draft',
     description: input.description,
     revision: 1,
+    data_revision: 1,
     based_on_version_id: null,
     created_by: DEMO_USER_ID,
     created_at: t,
@@ -279,6 +342,9 @@ function saveDraftIn(s: DemoState, payload: ReturnType<typeof toSavePayload>, us
   const t = now();
   const existingNodes = new Map(s.nodes.filter((n) => n.version_id === version.id).map((n) => [n.element_key, n]));
   s.nodes = s.nodes.filter((n) => n.version_id !== version.id);
+  // Removing an activity removes its inputs and outputs, as the foreign key cascade does in the database.
+  s.activityFields = s.activityFields.filter((f) => f.version_id !== version.id || nodeKeys.has(f.node_key));
+  s.activityOutputs = s.activityOutputs.filter((o) => o.version_id !== version.id || nodeKeys.has(o.node_key));
   for (const n of payload.p_nodes) {
     const previous = existingNodes.get(n.element_key);
     const refCode =
@@ -333,6 +399,7 @@ function createDraftIn(s: DemoState, versionId: string, userId: string): string 
     version_number: next,
     status: 'draft',
     revision: 1,
+    data_revision: 1,
     based_on_version_id: source.id,
     created_by: userId,
     created_at: t,
@@ -347,6 +414,12 @@ function createDraftIn(s: DemoState, versionId: string, userId: string): string 
   s.findings.push(
     ...s.findings.filter((f) => f.version_id === source.id).map((f) => ({ ...f, id: uuid(), version_id: draft.id })),
   );
+  s.activityFields.push(
+    ...s.activityFields.filter((f) => f.version_id === source.id).map((f) => ({ ...f, id: uuid(), version_id: draft.id })),
+  );
+  s.activityOutputs.push(
+    ...s.activityOutputs.filter((o) => o.version_id === source.id).map((o) => ({ ...o, id: uuid(), version_id: draft.id })),
+  );
   return draft.id;
 }
 
@@ -354,6 +427,254 @@ function versionGraph(versionId: string) {
   return graphFromRows(
     state.nodes.filter((n) => n.version_id === versionId),
     state.edges.filter((e) => e.version_id === versionId),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Data requirements (Phase 2), mirroring supabase/migrations/*_data_requirements.sql
+// ---------------------------------------------------------------------------
+
+function insertField(s: DemoState, projectId: string, input: NewFieldInput): FieldDefinitionRow {
+  const row: FieldDefinitionRow = {
+    id: uuid(),
+    project_id: projectId,
+    ref_code: nextRef(s, projectId, 'FLD'),
+    name: input.name.trim(),
+    description: input.description,
+    data_type: input.dataType,
+    allowed_values: input.allowedValues,
+    default_value: input.defaultValue,
+    source: input.source,
+    source_detail: input.sourceDetail,
+    status: input.status ?? 'draft',
+    origin: input.origin,
+    revision: 1,
+  };
+  if (!row.name) throw new AppError('Some values are not in the expected format.', '23514');
+  s.fields.push(row);
+  return row;
+}
+
+function insertRule(s: DemoState, projectId: string, input: ValidationRuleInput): ValidationRuleRow {
+  if (!s.fields.some((f) => f.id === input.fieldId && f.project_id === projectId)) {
+    throw new AppError('Linked records must belong to the same project', 'PF422');
+  }
+  const row: ValidationRuleRow = {
+    id: uuid(),
+    project_id: projectId,
+    field_id: input.fieldId,
+    ref_code: nextRef(s, projectId, 'VR'),
+    rule_type: input.ruleType,
+    params: input.params,
+    statement: input.statement,
+    error_message: input.errorMessage,
+    source_text: input.sourceText,
+    origin: input.origin,
+    status: input.status,
+    business_rule_id: input.businessRuleId,
+  };
+  s.rules.push(row);
+  return row;
+}
+
+function insertBusinessRule(
+  s: DemoState,
+  projectId: string,
+  input: BusinessRuleInput & { source?: { versionId: string; findingKey: string } },
+): BusinessRuleRow {
+  const row: BusinessRuleRow = {
+    id: uuid(),
+    project_id: projectId,
+    ref_code: nextRef(s, projectId, 'BR'),
+    title: input.title.trim(),
+    statement: input.statement.trim(),
+    category: input.category,
+    status: 'draft',
+    origin: input.origin,
+    source_version_id: input.source?.versionId ?? null,
+    source_finding_key: input.source?.findingKey ?? null,
+    revision: 1,
+  };
+  s.businessRules.push(row);
+  setRuleLinks(s, projectId, row.id, input.activities);
+  return row;
+}
+
+function setRuleLinks(s: DemoState, projectId: string, ruleId: string, activities: BusinessRuleInput['activities']) {
+  s.ruleLinks = s.ruleLinks.filter((l) => l.business_rule_id !== ruleId);
+  const seen = new Set<string>();
+  for (const a of activities) {
+    const key = `${a.processId}|${a.nodeKey}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    s.ruleLinks.push({ business_rule_id: ruleId, project_id: projectId, process_id: a.processId, node_key: a.nodeKey });
+  }
+}
+
+function writeVersionData(s: DemoState, version: ProcessVersionRow, payload: SaveDataPayload) {
+  const nodes = new Map(s.nodes.filter((n) => n.version_id === version.id).map((n) => [n.element_key, n]));
+  const activityKeys = [...payload.p_fields.map((f) => f.node_key), ...payload.p_outputs.map((o) => o.node_key)];
+  if (activityKeys.some((k) => !nodes.has(k) || ['start', 'end'].includes(nodes.get(k)!.node_type))) {
+    throw new AppError("Inputs and outputs must belong to activities in this version's process map", 'PF422');
+  }
+  if (payload.p_fields.some((f) => !s.fields.some((d) => d.id === f.field_id && d.project_id === version.project_id))) {
+    throw new AppError("A field is not in this project's data dictionary", 'PF422');
+  }
+  const uses = new Set<string>();
+  for (const f of payload.p_fields) {
+    const key = `${f.node_key}|${f.direction}|${f.field_id}`;
+    if (uses.has(key)) throw new AppError('That field is already used by this activity.', '23505');
+    uses.add(key);
+  }
+  s.activityFields = s.activityFields.filter((f) => f.version_id !== version.id);
+  s.activityOutputs = s.activityOutputs.filter((o) => o.version_id !== version.id);
+  s.activityFields.push(
+    ...payload.p_fields.map((f) => ({
+      ...f,
+      id: uuid(),
+      version_id: version.id,
+      project_id: version.project_id,
+      mandatory: f.direction === 'output' ? ('no' as const) : f.mandatory,
+      mandatory_condition: f.direction === 'input' && f.mandatory === 'conditional' ? f.mandatory_condition : '',
+    })),
+  );
+  s.activityOutputs.push(
+    ...payload.p_outputs.map((o) => ({ ...o, id: uuid(), version_id: version.id, project_id: version.project_id })),
+  );
+  version.data_revision += 1;
+  version.updated_at = now();
+}
+
+/** Example data requirements for the debt write-off process, built from the shared test fixture. */
+function seedDataRequirements(s: DemoState, projectId: string, processId: string, versionId: string) {
+  const version = s.versions.find((v) => v.id === versionId)!;
+  const graph = graphFromRows(
+    s.nodes.filter((n) => n.version_id === versionId),
+    s.edges.filter((e) => e.version_id === versionId),
+  );
+  const actors = s.actors.filter((a) => a.project_id === projectId).map((a) => ({ id: a.id, name: a.name, kind: a.kind }));
+  const { context, keyByActivityId } = buildSuggestionContext({
+    processName: 'Debt write-off',
+    description: version.description,
+    graph,
+    actors,
+    dictionary: [],
+    businessRules: [],
+  });
+  const suggestions = fieldSuggestionsForPrompt(buildFieldSuggestionPrompt(context).user);
+  const proposal = suggestionsToProposal(suggestions, { keyByActivityId, dictionary: [], current: { fields: [], outputs: [] } });
+  const idByKey = new Map<string, string>();
+  for (const draft of proposal.newFields) {
+    // Two fields are left as drafts so the dictionary shows what still needs confirming.
+    const status = ['Rejection Reason', 'Approver ID'].includes(draft.name) ? 'draft' : 'approved';
+    idByKey.set(draft.key, insertField(s, projectId, { ...draft, defaultValue: '', status }).id);
+  }
+  const requirements = applyDataProposal(
+    { fields: [], outputs: [] },
+    { fields: proposal.fields, outputs: proposal.outputs, fieldIdByNewKey: idByKey },
+  );
+  writeVersionData(
+    s,
+    version,
+    toSaveDataPayload({ versionId, expectedRevision: 1, requirements, nodeKeys: new Set(graph.nodes.map((n) => n.elementKey)) }),
+  );
+
+  const fieldId = (name: string) => s.fields.find((f) => f.project_id === projectId && f.name === name)!.id;
+  const nodeKey = (label: string) => graph.nodes.find((n) => n.label === label)!.elementKey;
+  const eligibility = s.findings.find((f) => f.version_id === versionId && f.kind === 'business_rule')!;
+  const fiveYears = insertBusinessRule(s, projectId, {
+    title: 'Five-year eligibility',
+    statement: eligibility.statement,
+    category: 'eligibility',
+    origin: eligibility.origin,
+    activities: eligibility.related_node_keys.map((k) => ({ processId, nodeKey: k })),
+    source: { versionId, findingKey: eligibility.element_key },
+  });
+  Object.assign(fiveYears, { status: 'approved', revision: 2 });
+  const director = insertBusinessRule(s, projectId, {
+    title: 'Director approval above $10,000',
+    statement: 'Write-off requests where the outstanding amount exceeds $10,000 require Director approval.',
+    category: 'approval',
+    origin: 'manual',
+    activities: [{ processId, nodeKey: nodeKey('Review write-off request') }],
+  });
+
+  insertRule(s, projectId, {
+    fieldId: fieldId('Outstanding Amount'),
+    ruleType: 'range',
+    params: { ...EMPTY_RULE_PARAMS, min: 0, exclusive: true },
+    statement: 'Outstanding amount must be greater than zero.',
+    errorMessage: 'Enter an outstanding amount greater than zero.',
+    sourceText: 'Outstanding amount must be greater than zero.',
+    origin: 'stated',
+    status: 'confirmed',
+    businessRuleId: null,
+  });
+  insertRule(s, projectId, {
+    fieldId: fieldId('Write-Off Reason'),
+    ruleType: 'length',
+    params: { ...EMPTY_RULE_PARAMS, maxLength: 500 },
+    statement: 'Write-off reason must be 500 characters or fewer.',
+    errorMessage: 'Shorten the reason to 500 characters or fewer.',
+    sourceText: null,
+    origin: 'manual',
+    status: 'confirmed',
+    businessRuleId: null,
+  });
+  insertRule(s, projectId, {
+    fieldId: fieldId('Debt ID'),
+    ruleType: 'lookup',
+    params: { ...EMPTY_RULE_PARAMS, lookupSource: 'Debt records (open debts only)' },
+    statement: 'Debt ID must exist in debt records and must not refer to a closed debt.',
+    errorMessage: 'No open debt has this ID. Check the number and try again.',
+    sourceText: null,
+    origin: 'inferred',
+    status: 'draft',
+    businessRuleId: null,
+  });
+  insertRule(s, projectId, {
+    fieldId: fieldId('Supporting Document'),
+    ruleType: 'conditional_required',
+    params: { ...EMPTY_RULE_PARAMS, condition: 'Outstanding amount exceeds $10,000' },
+    statement: 'A supporting document is required when the outstanding amount exceeds $10,000.',
+    errorMessage: 'Attach a supporting document for write-offs over $10,000.',
+    sourceText: null,
+    origin: 'manual',
+    status: 'confirmed',
+    businessRuleId: director.id,
+  });
+
+  const column = (table: string, name: string, type: string) => {
+    const row: PhysicalColumnRow = {
+      id: uuid(),
+      project_id: projectId,
+      system_name: 'Debt Management DB',
+      table_name: table,
+      column_name: name,
+      data_type: type,
+      notes: '',
+    };
+    s.columns.push(row);
+    return row.id;
+  };
+  const debtId = column('debts', 'debt_id', 'uuid');
+  const principal = column('debts', 'principal_cents', 'bigint');
+  const interest = column('debts', 'interest_cents', 'bigint');
+  column('write_off_requests', 'reason', 'text');
+  s.mappings.push(
+    { project_id: projectId, field_id: fieldId('Debt ID'), column_id: debtId, transformation: '' },
+    {
+      project_id: projectId,
+      field_id: fieldId('Outstanding Amount'),
+      column_id: principal,
+      transformation: '(principal + interest) / 100',
+    },
+    {
+      project_id: projectId,
+      field_id: fieldId('Outstanding Amount'),
+      column_id: interest,
+      transformation: '(principal + interest) / 100',
+    },
   );
 }
 
@@ -405,35 +726,53 @@ function sampleErrorMessage(error: SampleError): string {
   }
 }
 
-async function analyseWithClaude(
-  request: { description: string; processName: string; processType: string },
-  signal?: AbortSignal,
-): Promise<ProcessAnalysis> {
+/** Asks Claude for structured JSON, validates it, and retries once with the validation errors. */
+async function runStructured<T>(args: {
+  system: string;
+  user: string;
+  schema: Record<string, unknown>;
+  parse: (raw: string) => ParseResult<T>;
+  retryBase: string;
+  signal?: AbortSignal;
+}): Promise<T> {
   const json = await getSample();
-  const schema = JSON.stringify(processAnalysisJsonSchema());
-  const format = `\n\nReply with only a JSON object that matches this JSON schema exactly (no other text):\n${schema}`;
-  const original = buildUserMessage(request);
-  let message = original;
+  const format = `\n\nReply with only a JSON object that matches this JSON schema exactly (no other text):\n${JSON.stringify(args.schema)}`;
+  let message = args.user;
   let lastErrors: string[] = [];
   for (let attempt = 0; attempt < 2; attempt++) {
     let value: unknown;
     try {
-      value = await json(`${SYSTEM_PROMPT}\n\n${message}${format}`, { modelTier: 'default', signal });
+      value = await json(`${args.system}\n\n${message}${format}`, { modelTier: 'default', signal: args.signal });
     } catch (err) {
       const error = err as SampleError;
-      if (error?.code === 'cancelled') throw new AppError('Analysis cancelled.', 'cancelled');
-      throw new AppError(sampleErrorMessage(error), `analysis_${error?.code ?? 'error'}`);
+      if (error?.code === 'cancelled') throw new AppError('Cancelled.', 'cancelled');
+      throw new AppError(sampleErrorMessage(error), `ai_${error?.code ?? 'error'}`);
     }
     const raw = JSON.stringify(value);
-    const parsed = parseProcessAnalysis(raw);
+    const parsed = args.parse(raw);
     if (parsed.ok) return parsed.value;
     lastErrors = parsed.errors;
-    message = buildRetryMessage({ original, invalidOutput: raw, errors: parsed.errors });
+    message = buildRetryMessage({ original: args.retryBase, invalidOutput: raw, errors: parsed.errors });
   }
   throw new AppError(
-    `Claude returned a process model that failed validation (${lastErrors.slice(0, 3).join('; ')}). Try again.`,
-    'analysis_invalid_output',
+    `Claude returned an answer that failed validation (${lastErrors.slice(0, 3).join('; ')}). Try again.`,
+    'ai_invalid_output',
   );
+}
+
+function analyseWithClaude(
+  request: { description: string; processName: string; processType: string },
+  signal?: AbortSignal,
+): Promise<ProcessAnalysis> {
+  const user = buildUserMessage(request);
+  return runStructured({
+    system: SYSTEM_PROMPT,
+    user,
+    retryBase: user,
+    schema: processAnalysisJsonSchema(),
+    parse: parseProcessAnalysis,
+    signal,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -716,6 +1055,421 @@ export function createBackend(): Backend {
       state.runs.push({ id: runId, version_id: versionId, accepted_at: null });
       commit();
       return { runId, model: 'Claude (your claude.ai account)', proposal: analysisToProposal(analysis) };
+    },
+
+    // -------------------------------------------------------------------
+    // Phase 2: data requirements
+    // -------------------------------------------------------------------
+
+    async listFields(projectId) {
+      requireMember(projectId);
+      return state.fields
+        .filter((f) => f.project_id === projectId)
+        .sort((a, b) => a.ref_code.localeCompare(b.ref_code))
+        .map((f) => fieldFromRow(copy(f)));
+    },
+
+    async createFields(projectId, fields) {
+      requireRole(projectId, EDITORS, 'You do not have permission to edit the data dictionary.');
+      const rows = fields.map((f) => insertField(state, projectId, f));
+      commit();
+      return rows.map((r) => fieldFromRow(copy(r)));
+    },
+
+    async updateField(field) {
+      const row = state.fields.find((f) => f.id === field.id);
+      if (!row) throw new AppError('Field not found', 'P0002');
+      requireRole(row.project_id, EDITORS, 'You do not have permission to edit the data dictionary.');
+      if (row.revision !== field.revision) {
+        throw new AppError(
+          `${row.ref_code} was changed in another tab since you opened it. Reload to see those changes.`,
+          'PF409',
+        );
+      }
+      if (!field.name.trim()) throw new AppError('Some values are not in the expected format.', '23514');
+      Object.assign(row, {
+        name: field.name.trim(),
+        description: field.description,
+        data_type: field.dataType,
+        allowed_values: field.allowedValues,
+        default_value: field.defaultValue,
+        source: field.source,
+        source_detail: field.sourceDetail,
+        status: field.status,
+        revision: row.revision + 1,
+      });
+      commit();
+      return fieldFromRow(copy(row));
+    },
+
+    async deleteField(fieldId) {
+      const row = state.fields.find((f) => f.id === fieldId);
+      if (!row) return;
+      requireRole(row.project_id, EDITORS, 'You do not have permission to delete this field.');
+      if (state.activityFields.some((f) => f.field_id === fieldId)) {
+        throw new AppError(`Field ${row.ref_code} is used by a process activity. Deprecate it instead of deleting it.`, 'PF423');
+      }
+      state.fields = state.fields.filter((f) => f.id !== fieldId);
+      state.rules = state.rules.filter((r) => r.field_id !== fieldId);
+      state.mappings = state.mappings.filter((m) => m.field_id !== fieldId);
+      commit();
+    },
+
+    async listFieldUsages(projectId) {
+      requireMember(projectId);
+      return state.activityFields
+        .filter((f) => f.project_id === projectId)
+        .map((f): FieldUsage => {
+          const version = state.versions.find((v) => v.id === f.version_id)!;
+          const process = state.processes.find((p) => p.id === version.process_id)!;
+          const node = state.nodes.find((n) => n.version_id === f.version_id && n.element_key === f.node_key);
+          return {
+            fieldId: f.field_id,
+            direction: f.direction,
+            processId: process.id,
+            processRef: process.ref_code,
+            processName: process.name,
+            versionId: version.id,
+            versionNumber: version.version_number,
+            versionStatus: version.status,
+            nodeKey: f.node_key,
+            nodeRef: node?.ref_code ?? null,
+            nodeLabel: node?.label ?? '',
+          };
+        });
+    },
+
+    async listValidationRules(projectId) {
+      requireMember(projectId);
+      return state.rules
+        .filter((r) => r.project_id === projectId)
+        .sort((a, b) => a.ref_code.localeCompare(b.ref_code))
+        .map((r) => ruleFromRow(copy(r)));
+    },
+
+    async createValidationRule(projectId, input) {
+      requireRole(projectId, EDITORS, 'You do not have permission to edit validation rules.');
+      const row = insertRule(state, projectId, input);
+      commit();
+      return ruleFromRow(copy(row));
+    },
+
+    async updateValidationRule(rule) {
+      const row = state.rules.find((r) => r.id === rule.id);
+      if (!row) throw new AppError('Rule not found', 'P0002');
+      requireRole(row.project_id, EDITORS, 'You do not have permission to change this rule.');
+      Object.assign(row, {
+        rule_type: rule.ruleType,
+        params: rule.params,
+        statement: rule.statement,
+        error_message: rule.errorMessage,
+        status: rule.status,
+        business_rule_id: rule.businessRuleId,
+      });
+      commit();
+      return ruleFromRow(copy(row));
+    },
+
+    async deleteValidationRule(ruleId) {
+      const row = state.rules.find((r) => r.id === ruleId);
+      if (!row) return;
+      requireRole(row.project_id, EDITORS, 'You do not have permission to change this rule.');
+      state.rules = state.rules.filter((r) => r.id !== ruleId);
+      commit();
+    },
+
+    async listPhysicalColumns(projectId) {
+      requireMember(projectId);
+      return state.columns
+        .filter((c) => c.project_id === projectId)
+        .sort((a, b) =>
+          `${a.system_name}.${a.table_name}.${a.column_name}`.localeCompare(`${b.system_name}.${b.table_name}.${b.column_name}`),
+        )
+        .map((c) => columnFromRow(copy(c)));
+    },
+
+    async createPhysicalColumn(projectId, input) {
+      requireRole(projectId, EDITORS, 'You do not have permission to edit the data dictionary.');
+      const key = (c: { system_name: string; table_name: string; column_name: string }) =>
+        `${c.system_name}.${c.table_name}.${c.column_name}`.toLowerCase();
+      const row: PhysicalColumnRow = {
+        id: uuid(),
+        project_id: projectId,
+        system_name: input.systemName.trim(),
+        table_name: input.tableName.trim(),
+        column_name: input.columnName.trim(),
+        data_type: input.dataType.trim(),
+        notes: input.notes,
+      };
+      if (!row.system_name || !row.table_name || !row.column_name)
+        throw new AppError('Some values are not in the expected format.', '23514');
+      if (state.columns.some((c) => c.project_id === projectId && key(c) === key(row)))
+        throw new AppError('That name is already in use.', '23505');
+      state.columns.push(row);
+      commit();
+      return columnFromRow(copy(row));
+    },
+
+    async deletePhysicalColumn(columnId) {
+      const row = state.columns.find((c) => c.id === columnId);
+      if (!row) return;
+      requireRole(row.project_id, EDITORS, 'You do not have permission to edit the data dictionary.');
+      state.columns = state.columns.filter((c) => c.id !== columnId);
+      state.mappings = state.mappings.filter((m) => m.column_id !== columnId);
+      commit();
+    },
+
+    async listColumnMappings(projectId) {
+      requireMember(projectId);
+      return state.mappings
+        .filter((m) => m.project_id === projectId)
+        .map((m) => ({ fieldId: m.field_id, columnId: m.column_id, transformation: m.transformation }));
+    },
+
+    async addColumnMapping(projectId, mapping) {
+      requireRole(projectId, EDITORS, 'You do not have permission to edit the data dictionary.');
+      if (state.mappings.some((m) => m.field_id === mapping.fieldId && m.column_id === mapping.columnId)) {
+        throw new AppError('That column is already mapped to this field.', '23505');
+      }
+      state.mappings.push({
+        project_id: projectId,
+        field_id: mapping.fieldId,
+        column_id: mapping.columnId,
+        transformation: mapping.transformation,
+      });
+      commit();
+    },
+
+    async removeColumnMapping(fieldId, columnId) {
+      const field = state.fields.find((f) => f.id === fieldId);
+      if (field) requireRole(field.project_id, EDITORS, 'You do not have permission to edit the data dictionary.');
+      state.mappings = state.mappings.filter((m) => !(m.field_id === fieldId && m.column_id === columnId));
+      commit();
+    },
+
+    async listBusinessRules(projectId) {
+      requireMember(projectId);
+      return state.businessRules
+        .filter((r) => r.project_id === projectId)
+        .sort((a, b) => a.ref_code.localeCompare(b.ref_code))
+        .map((r) => businessRuleFromRow(copy(r), copy(state.ruleLinks)));
+    },
+
+    async createBusinessRule(projectId, input) {
+      requireRole(projectId, EDITORS, 'You do not have permission to manage business rules.');
+      if (!input.title.trim() || !input.statement.trim())
+        throw new AppError('Some values are not in the expected format.', '23514');
+      const row = insertBusinessRule(state, projectId, input);
+      commit();
+      return businessRuleFromRow(copy(row), copy(state.ruleLinks));
+    },
+
+    async updateBusinessRule(rule) {
+      const row = state.businessRules.find((r) => r.id === rule.id);
+      if (!row) throw new AppError('Business rule not found', 'P0002');
+      requireRole(row.project_id, [...EDITORS, 'product_owner'], 'You do not have permission to change this business rule.');
+      if (row.revision !== rule.revision) {
+        throw new AppError(
+          `${row.ref_code} was changed in another tab since you opened it. Reload to see those changes.`,
+          'PF409',
+        );
+      }
+      if (rule.status === 'approved' && row.status !== 'approved') {
+        requireRole(row.project_id, APPROVERS, 'Only a Product Owner or Administrator can approve a business rule');
+      }
+      if (
+        row.status === 'approved' &&
+        rule.status === 'approved' &&
+        (rule.statement !== row.statement || rule.title !== row.title || rule.category !== row.category)
+      ) {
+        throw new AppError('An approved business rule cannot be reworded. Return it to draft first.', 'PF423');
+      }
+      Object.assign(row, {
+        title: rule.title,
+        statement: rule.statement,
+        category: rule.category,
+        status: rule.status,
+        revision: row.revision + 1,
+      });
+      setRuleLinks(state, row.project_id, row.id, rule.activities);
+      commit();
+      return businessRuleFromRow(copy(row), copy(state.ruleLinks));
+    },
+
+    async deleteBusinessRule(ruleId) {
+      const row = state.businessRules.find((r) => r.id === ruleId);
+      if (!row) return;
+      requireRole(row.project_id, EDITORS, 'You do not have permission to manage business rules.');
+      if (row.status === 'approved')
+        throw new AppError('An approved business rule cannot be deleted. Retire it instead.', 'PF423');
+      state.businessRules = state.businessRules.filter((r) => r.id !== ruleId);
+      state.ruleLinks = state.ruleLinks.filter((l) => l.business_rule_id !== ruleId);
+      for (const r of state.rules) if (r.business_rule_id === ruleId) r.business_rule_id = null;
+      commit();
+    },
+
+    async listPromotableFindings(projectId) {
+      requireMember(projectId);
+      const promoted = new Set(state.businessRules.map((r) => r.source_finding_key));
+      const rows: PromotableFinding[] = state.findings
+        .filter((f) => f.project_id === projectId && f.kind === 'business_rule' && f.status !== 'dismissed')
+        .map((f) => {
+          const version = state.versions.find((v) => v.id === f.version_id)!;
+          const process = state.processes.find((p) => p.id === version.process_id)!;
+          return {
+            versionId: f.version_id,
+            findingKey: f.element_key,
+            statement: f.statement,
+            processId: process.id,
+            processRef: process.ref_code,
+            processName: process.name,
+            versionNumber: version.version_number,
+            promoted: promoted.has(f.element_key),
+          };
+        });
+      return latestFindingPerKey(rows);
+    },
+
+    async promoteFinding(input) {
+      const finding = state.findings.find((f) => f.version_id === input.versionId && f.element_key === input.findingKey);
+      if (!finding) throw new AppError('Finding not found', 'P0002');
+      requireRole(finding.project_id, EDITORS, 'You do not have permission to manage business rules.');
+      if (finding.kind !== 'business_rule' || finding.status === 'dismissed') {
+        throw new AppError('Only business-rule findings that are not dismissed can be promoted', 'PF422');
+      }
+      if (state.businessRules.some((r) => r.source_finding_key === finding.element_key)) {
+        throw new AppError('This finding is already in the business rule register', 'PF409');
+      }
+      const version = state.versions.find((v) => v.id === input.versionId)!;
+      const row = insertBusinessRule(state, finding.project_id, {
+        title: input.title.trim() || finding.statement.slice(0, 200),
+        statement: finding.statement,
+        category: input.category,
+        origin: finding.origin,
+        activities: finding.related_node_keys.map((k) => ({ processId: version.process_id, nodeKey: k })),
+        source: { versionId: input.versionId, findingKey: input.findingKey },
+      });
+      commit();
+      return row.id;
+    },
+
+    async getVersionData(versionId) {
+      const version = state.versions.find((v) => v.id === versionId);
+      if (!version) throw new AppError('Process version not found', 'P0002');
+      requireMember(version.project_id);
+      return copy({
+        dataRevision: version.data_revision,
+        requirements: requirementsFromRows(
+          state.activityFields.filter((f) => f.version_id === versionId),
+          state.activityOutputs.filter((o) => o.version_id === versionId),
+        ),
+      });
+    },
+
+    async saveVersionData(payload) {
+      const version = state.versions.find((v) => v.id === payload.p_version_id);
+      if (!version) throw new AppError('Process version not found', 'P0002');
+      requireRole(version.project_id, EDITORS, 'You do not have permission to edit this process');
+      if (version.status !== 'draft') {
+        throw new AppError(
+          `Version ${version.version_number} is ${version.status} and cannot be changed; create a new draft instead`,
+          'PF423',
+        );
+      }
+      if (version.data_revision !== payload.p_expected_revision) {
+        throw new AppError(
+          'The inputs and outputs were saved in another tab since you opened them. Reload to see those changes.',
+          'PF409',
+        );
+      }
+      writeVersionData(state, version, copy(payload));
+      commit();
+      return version.data_revision;
+    },
+
+    async suggestFields({ versionId, nodeKeys }, signal) {
+      const version = state.versions.find((v) => v.id === versionId);
+      if (!version) throw new AppError('Process version not found.', 'not_found');
+      requireRole(version.project_id, EDITORS, 'Only Business Analysts and Administrators can define data requirements.');
+      if (version.status !== 'draft') {
+        throw new AppError('This version is not a draft. Create a new draft to change its data requirements.', 'version_locked');
+      }
+      const process = state.processes.find((p) => p.id === version.process_id)!;
+      const dictionary = state.fields.filter((f) => f.project_id === version.project_id).map(fieldFromRow);
+      const businessRules = [
+        ...state.findings
+          .filter((f) => f.version_id === versionId && f.kind === 'business_rule' && f.status !== 'dismissed')
+          .map((f) => f.statement),
+        ...state.businessRules
+          .filter((r) => r.project_id === version.project_id && r.status !== 'retired')
+          .map((r) => r.statement),
+      ];
+      const { context, keyByActivityId } = buildSuggestionContext({
+        processName: process.name,
+        description: version.description,
+        graph: versionGraph(versionId),
+        actors: state.actors
+          .filter((a) => a.project_id === version.project_id)
+          .map((a) => ({ id: a.id, name: a.name, kind: a.kind })),
+        dictionary,
+        businessRules: [...new Set(businessRules)],
+        nodeKeys,
+      });
+      if (keyByActivityId.size === 0)
+        throw new AppError('The process map has no activities to define data for. Create the map first.', 'no_activities');
+      const prompt = buildFieldSuggestionPrompt(context);
+      const ids = new Set(keyByActivityId.keys());
+      const suggestions = await runStructured({
+        ...prompt,
+        retryBase: prompt.user,
+        schema: fieldSuggestionsJsonSchema(),
+        parse: (raw) => parseFieldSuggestions(raw, ids),
+        signal,
+      });
+      const current = requirementsFromRows(
+        state.activityFields.filter((f) => f.version_id === versionId),
+        state.activityOutputs.filter((o) => o.version_id === versionId),
+      );
+      return {
+        runId: uuid(),
+        model: 'Claude (your claude.ai account)',
+        proposal: suggestionsToProposal(suggestions, { keyByActivityId, dictionary, current }),
+      };
+    },
+
+    async translateValidationRule({ fieldId, text }, signal) {
+      const row = state.fields.find((f) => f.id === fieldId);
+      if (!row) throw new AppError('Field not found.', 'not_found');
+      requireRole(row.project_id, EDITORS, 'Only Business Analysts and Administrators can define validation rules.');
+      const trimmed = text.trim();
+      if (trimmed.length < 5) throw new AppError('Describe the validation logic first.');
+      const dictionary = state.fields.filter((f) => f.project_id === row.project_id).map(fieldFromRow);
+      const field = fieldFromRow(row);
+      const prompt = buildRuleTranslationPrompt({
+        field: {
+          refCode: field.refCode,
+          name: field.name,
+          dataType: field.dataType,
+          description: field.description,
+          allowedValues: field.allowedValues,
+        },
+        otherFields: dictionary
+          .filter((f) => f.id !== field.id && f.status !== 'deprecated')
+          .map((f) => ({ refCode: f.refCode, name: f.name, dataType: f.dataType })),
+        text: trimmed,
+      });
+      const translation = await runStructured({
+        ...prompt,
+        retryBase: prompt.user,
+        schema: ruleTranslationJsonSchema(),
+        parse: parseRuleTranslation,
+        signal,
+      });
+      return {
+        runId: uuid(),
+        model: 'Claude (your claude.ai account)',
+        proposal: translationToProposal(translation, dictionary),
+      };
     },
   };
 }

@@ -4,7 +4,8 @@ An AI-powered product management and delivery platform. Business Analysts descri
 language; Claude drafts an interactive process map that the analyst reviews, edits, validates and approves.
 Later phases build data requirements, user stories, delivery tracking and UAT on the same traceable model.
 
-**Status: Phase 1 (Process Design)** is implemented. Other modules are visible in the navigation as Coming Soon.
+**Status: Phase 1 (Process Design) and Phase 2 (Data Requirements)** are implemented. Other modules are visible in the
+navigation as Coming Soon.
 
 ## What Phase 1 does
 
@@ -20,6 +21,18 @@ Later phases build data requirements, user stories, delivery tracking and UAT on
   ambiguous wording and open questions
 - Versioning: save drafts with conflict detection and crash recovery. Approved versions are frozen, and changes
   go into a new draft
+
+## What Phase 2 does
+
+- **Input & Output Designer**: for each activity, the input and output fields (mandatory, optional or conditional with
+  the condition), records updated, documents generated, notifications and status changes, and the next activity from the map
+- **AI suggestions**: Claude proposes fields and outputs from the process; you tick what to keep, new fields start as drafts
+- **Data dictionary**: reusable logical fields with types, sources and defaults, mapped many-to-many to physical columns,
+  with "used by" traceability across process versions
+- **Validation rules** per field (required, format, range, length, conditional, cross-field, lookup, duplicate, custom),
+  written by hand or translated by Claude from plain language and confirmed by the analyst
+- **Business rule register** with Product Owner approval, links to activities and validation rules, and import of the
+  rules AI found in process descriptions
 
 ## Repository
 

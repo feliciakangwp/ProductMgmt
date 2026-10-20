@@ -1,4 +1,4 @@
-import type { ValidationIssue } from '@productflow/domain';
+import type { DataIssue, ValidationIssue } from '@productflow/domain';
 import { useState } from 'react';
 import { Alert, Button, Dialog } from '../../components/ui';
 import { errorMessage } from '../../lib/errors';
@@ -7,12 +7,15 @@ export function ApproveDialog({
   open,
   versionNumber,
   issues,
+  dataIssues = [],
   onApprove,
   onClose,
 }: {
   open: boolean;
   versionNumber: number;
   issues: ValidationIssue[];
+  /** Inputs and outputs findings; shown for acknowledgement, never blocking. */
+  dataIssues?: DataIssue[];
   onApprove: () => Promise<void>;
   onClose: () => void;
 }) {
@@ -21,7 +24,8 @@ export function ApproveDialog({
   const [error, setError] = useState<string | null>(null);
   const errors = issues.filter((i) => i.severity === 'error');
   const warnings = issues.filter((i) => i.severity === 'warning');
-  const canApprove = errors.length === 0 && (warnings.length === 0 || acknowledged);
+  const toAcknowledge = warnings.length + dataIssues.length;
+  const canApprove = errors.length === 0 && (toAcknowledge === 0 || acknowledged);
 
   function close() {
     setAcknowledged(false);
@@ -73,15 +77,26 @@ export function ApproveDialog({
             </ul>
           </Alert>
         ) : null}
-        {errors.length === 0 && warnings.length > 0 ? (
+        {errors.length === 0 && toAcknowledge > 0 ? (
           <>
-            <Alert tone="warning" title={`${warnings.length} warning${warnings.length > 1 ? 's' : ''} to review`}>
-              <ul className="mt-1 max-h-48 list-disc space-y-0.5 overflow-y-auto pl-4">
-                {warnings.map((i) => (
-                  <li key={i.id}>{i.message}</li>
-                ))}
-              </ul>
-            </Alert>
+            {warnings.length > 0 ? (
+              <Alert tone="warning" title={`${warnings.length} warning${warnings.length > 1 ? 's' : ''} to review`}>
+                <ul className="mt-1 max-h-48 list-disc space-y-0.5 overflow-y-auto pl-4">
+                  {warnings.map((i) => (
+                    <li key={i.id}>{i.message}</li>
+                  ))}
+                </ul>
+              </Alert>
+            ) : null}
+            {dataIssues.length > 0 ? (
+              <Alert tone="warning" title={`${dataIssues.length} inputs & outputs issue${dataIssues.length > 1 ? 's' : ''}`}>
+                <ul className="mt-1 max-h-48 list-disc space-y-0.5 overflow-y-auto pl-4">
+                  {dataIssues.map((i) => (
+                    <li key={i.id}>{i.message}</li>
+                  ))}
+                </ul>
+              </Alert>
+            ) : null}
             <label className="flex items-start gap-2 text-sm text-slate-700">
               <input
                 type="checkbox"
@@ -93,7 +108,7 @@ export function ApproveDialog({
             </label>
           </>
         ) : null}
-        {issues.length === 0 ? <Alert tone="success">No validation issues found.</Alert> : null}
+        {issues.length === 0 && dataIssues.length === 0 ? <Alert tone="success">No validation issues found.</Alert> : null}
       </div>
     </Dialog>
   );

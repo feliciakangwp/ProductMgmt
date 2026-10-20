@@ -11,8 +11,9 @@ import {
   type ProcessGraph,
   type ProcessNodeType,
 } from '@productflow/domain';
-import { ArrowRight, MousePointerClick, Plus, Quote, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowRight, MousePointerClick, Plus, Quote, Sparkles, Table2, Trash2 } from 'lucide-react';
 import { useState, type Dispatch } from 'react';
+import { Link } from 'react-router';
 import { Alert, Badge, Button, Field, Input, Select, Textarea } from '../../components/ui';
 import { errorMessage } from '../../lib/errors';
 import { useCreateActor } from './api';
@@ -28,7 +29,10 @@ export function PropertiesPanel({
   selection,
   readOnly,
   dispatch,
+  dataLink,
 }: {
+  /** Address of the activity's inputs and outputs, once the map is saved. */
+  dataLink?: (nodeKey: string) => string | null;
   projectId: string;
   graph: ProcessGraph;
   actors: Actor[];
@@ -54,6 +58,7 @@ export function PropertiesPanel({
         nodeKey={selection.key}
         readOnly={readOnly}
         dispatch={dispatch}
+        dataLink={dataLink?.(selection.key) ?? null}
       />
     );
   }
@@ -67,7 +72,9 @@ function NodeProperties({
   nodeKey,
   readOnly,
   dispatch,
+  dataLink,
 }: {
+  dataLink: string | null;
   projectId: string;
   graph: ProcessGraph;
   actors: Actor[];
@@ -210,6 +217,12 @@ function NodeProperties({
       <p className="text-xs text-slate-500">
         {incoming} incoming · {outgoing} outgoing connection{outgoing === 1 ? '' : 's'}
       </p>
+
+      {!isEvent && dataLink ? (
+        <Link to={dataLink} className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline">
+          <Table2 className="size-3.5" /> Inputs &amp; outputs of this activity
+        </Link>
+      ) : null}
 
       {readOnly ? null : (
         <Button

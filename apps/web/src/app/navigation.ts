@@ -51,7 +51,8 @@ export const NAVIGATION: NavGroup[] = [
         label: 'Input & Output Designer',
         icon: Table2,
         phase: 2,
-        implemented: false,
+        implemented: true,
+        path: (projectId) => (projectId ? `/projects/${projectId}/data` : '/projects'),
         summary: 'Define the fields, validation rules and outputs of each process activity in a shared data dictionary.',
       },
       {

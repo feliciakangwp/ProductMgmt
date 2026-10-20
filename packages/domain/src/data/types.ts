@@ -241,3 +241,9 @@ export interface VersionDataRequirements {
   fields: ActivityField[];
   outputs: ActivityOutput[];
 }
+
+/** Identifies a process finding by its version and element key. */
+export interface FindingRef {
+  versionId: string;
+  findingKey: string;
+}
