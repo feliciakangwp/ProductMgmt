@@ -11,7 +11,10 @@ const script = index.match(/<script type="module"[^>]*src="\.?\/?([^"]+)"/)?.[1]
 const style = index.match(/<link rel="stylesheet"[^>]*href="\.?\/?([^"]+)"/)?.[1];
 if (!script || !style) throw new Error('Could not find the built script and stylesheet in dist-demo/index.html');
 
-const js = readFileSync(join(dist, script), 'utf8').replaceAll('</script', '<\\/script');
+const js = readFileSync(join(dist, script), 'utf8')
+  .replaceAll('</script', '<\\/script')
+  // A literal U+FFFD in the bundle (from a dependency) is written as an escape, which means the same in JS strings and regexes.
+  .replaceAll('\uFFFD', '\\uFFFD');
 const css = readFileSync(join(dist, style), 'utf8').replaceAll('</style', '<\\/style');
 
 const page = `<title>ProductFlow AI Demo</title>
