@@ -52,11 +52,34 @@ export const ProcessAnalysisSchema = z.strictObject({
 export type ProcessAnalysis = z.infer<typeof ProcessAnalysisSchema>;
 export type AnalysisStep = z.infer<typeof AnalysisStepSchema>;
 
-/** JSON schema form of {@link ProcessAnalysisSchema} for `output_config.format`. */
-export function processAnalysisJsonSchema(): Record<string, unknown> {
-  const schema = z.toJSONSchema(ProcessAnalysisSchema, { target: 'draft-2020-12' }) as Record<string, unknown>;
+/** JSON schema form of a zod schema, in the shape structured outputs accept (`output_config.format`). */
+export function structuredOutputSchema(zodSchema: z.ZodType): Record<string, unknown> {
+  const schema = z.toJSONSchema(zodSchema, { target: 'draft-2020-12' }) as Record<string, unknown>;
   delete schema.$schema;
   return normaliseTypeUnions(schema) as Record<string, unknown>;
+}
+
+/** JSON schema form of {@link ProcessAnalysisSchema} for `output_config.format`. */
+export function processAnalysisJsonSchema(): Record<string, unknown> {
+  return structuredOutputSchema(ProcessAnalysisSchema);
+}
+
+/** Parses raw model text as JSON and validates it with a zod schema, collecting readable errors. */
+export function parseJsonWithSchema<T>(raw: string, schema: z.ZodType<T>): ParseResult<T> {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch (err) {
+    return { ok: false, errors: [`Response is not valid JSON: ${(err as Error).message}`] };
+  }
+  const result = schema.safeParse(json);
+  if (!result.success) {
+    return {
+      ok: false,
+      errors: result.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`),
+    };
+  }
+  return { ok: true, value: result.data };
 }
 
 /** Rewrites `type: ["string", "null"]` as an explicit `anyOf`, the most widely supported form. */
@@ -78,22 +101,11 @@ export type ParseResult<T> = { ok: true; value: T } | { ok: false; errors: strin
 
 /** Parses raw model text into a validated analysis, collecting readable errors. */
 export function parseProcessAnalysis(raw: string): ParseResult<ProcessAnalysis> {
-  let json: unknown;
-  try {
-    json = JSON.parse(raw);
-  } catch (err) {
-    return { ok: false, errors: [`Response is not valid JSON: ${(err as Error).message}`] };
-  }
-  const result = ProcessAnalysisSchema.safeParse(json);
-  if (!result.success) {
-    return {
-      ok: false,
-      errors: result.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`),
-    };
-  }
-  const semanticErrors = checkAnalysisReferences(result.data);
+  const result = parseJsonWithSchema(raw, ProcessAnalysisSchema);
+  if (!result.ok) return result;
+  const semanticErrors = checkAnalysisReferences(result.value);
   if (semanticErrors.length > 0) return { ok: false, errors: semanticErrors };
-  return { ok: true, value: result.data };
+  return result;
 }
 
 /** Structural checks the JSON schema cannot express: unique ids and valid references. */
