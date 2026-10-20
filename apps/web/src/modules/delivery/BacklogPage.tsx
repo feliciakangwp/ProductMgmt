@@ -239,7 +239,7 @@ export function BacklogPage() {
                       <Select
                         aria-label={`Priority of ${s.refCode}`}
                         className="h-8 w-28 text-xs"
-                        disabled={!plan}
+                        disabled={!plan || update.isPending}
                         value={s.priority}
                         onChange={(e) => patch(s, { priority: e.target.value as Priority })}
                       >
@@ -256,7 +256,7 @@ export function BacklogPage() {
                         value={s.businessValue}
                         min={1}
                         max={10}
-                        disabled={!plan}
+                        disabled={!plan || update.isPending}
                         onSave={(v) => patch(s, { businessValue: v === null ? null : Math.round(v) })}
                       />
                     </td>
@@ -264,7 +264,7 @@ export function BacklogPage() {
                       <NumberCell
                         label={`Story points of ${s.refCode}`}
                         value={s.storyPoints}
-                        disabled={!estimate}
+                        disabled={!estimate || update.isPending}
                         onSave={(v) => patch(s, { storyPoints: v })}
                       />
                     </td>
@@ -272,7 +272,7 @@ export function BacklogPage() {
                       <NumberCell
                         label={`Estimate of ${s.refCode}`}
                         value={s.estimateHours}
-                        disabled={!estimate}
+                        disabled={!estimate || update.isPending}
                         onSave={(v) => patch(s, { estimateHours: v })}
                       />
                       {s.originalEstimateHours !== null && s.originalEstimateHours !== s.estimateHours ? (
@@ -283,7 +283,7 @@ export function BacklogPage() {
                       <Select
                         aria-label={`Developer for ${s.refCode}`}
                         className="h-8 w-36 text-xs"
-                        disabled={!estimate}
+                        disabled={!estimate || update.isPending}
                         value={s.assigneeId ?? ''}
                         onChange={(e) => patch(s, { assigneeId: e.target.value || null })}
                       >

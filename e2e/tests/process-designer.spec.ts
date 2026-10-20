@@ -19,7 +19,7 @@ test('analyst creates, analyses, edits, saves, reopens and approves a process', 
   // 1–2. Open ProductFlow AI and create a project.
   await signUp(page, 'Avery Analyst', `avery-${unique}@example.com`);
   await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: /Development Kanban/ })).toContainText('Soon');
+  await expect(page.getByRole('link', { name: /Development Kanban/ })).toHaveAttribute('href', '/projects');
   await page.getByRole('button', { name: 'Create your first project' }).click();
   await page.getByLabel('Project name').fill('Debt Management');
   await page.getByLabel('Project key').fill(`D${unique}`);

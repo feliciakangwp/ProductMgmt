@@ -61,6 +61,7 @@ export default defineConfig({
         CORS_ORIGIN: `http://localhost:${WEB_PORT}`,
         SUPABASE_URL: stack.SUPABASE_URL!,
         SUPABASE_ANON_KEY: stack.SUPABASE_ANON_KEY!,
+        SUPABASE_SERVICE_ROLE_KEY: stack.SUPABASE_SERVICE_ROLE_KEY!,
         ANTHROPIC_API_KEY: 'test-key',
         ANTHROPIC_BASE_URL: `http://127.0.0.1:${MOCK_PORT}`,
       },
