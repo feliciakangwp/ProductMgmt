@@ -6,10 +6,13 @@ import { errorMessage } from '../lib/errors';
 import { Logo } from '../app/Logo';
 import { useAuth } from './AuthProvider';
 
+const TITLES = { signin: 'Sign in', signup: 'Create an account', reset: 'Reset your password' } as const;
+const SUBMIT = { signin: 'Sign in', signup: 'Create account', reset: 'Send reset link' } as const;
+
 export function LoginPage() {
   const { session } = useAuth();
   const location = useLocation();
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -22,6 +25,12 @@ export function LoginPage() {
     return <Navigate to={from} replace />;
   }
 
+  function switchTo(next: typeof mode) {
+    setMode(next);
+    setError(null);
+    setNotice(null);
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -30,6 +39,9 @@ export function LoginPage() {
     try {
       if (mode === 'signin') {
         await backend.auth.signIn(email, password);
+      } else if (mode === 'reset') {
+        await backend.auth.requestPasswordReset(email.trim());
+        setNotice('If an account exists for that email, we sent a link to choose a new password.');
       } else {
         const { needsConfirmation } = await backend.auth.signUp(email, password, displayName.trim());
         if (needsConfirmation) setNotice('Check your email to confirm your account, then sign in.');
@@ -48,8 +60,12 @@ export function LoginPage() {
         </div>
         <form onSubmit={submit} className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">{mode === 'signin' ? 'Sign in' : 'Create an account'}</h1>
-            <p className="text-sm text-slate-500">AI-powered product management and delivery.</p>
+            <h1 className="text-lg font-semibold text-slate-900">{TITLES[mode]}</h1>
+            <p className="text-sm text-slate-500">
+              {mode === 'reset'
+                ? 'Enter your email and we will send you a reset link.'
+                : 'AI-powered product management and delivery.'}
+            </p>
           </div>
           {error ? <Alert tone="error">{error}</Alert> : null}
           {notice ? <Alert tone="success">{notice}</Alert> : null}
@@ -72,32 +88,39 @@ export function LoginPage() {
               />
             )}
           </Field>
-          <Field label="Password" hint={mode === 'signup' ? 'At least 8 characters.' : undefined}>
-            {(id) => (
-              <Input
-                id={id}
-                type="password"
-                autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-                minLength={mode === 'signup' ? 8 : undefined}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            )}
-          </Field>
+          {mode !== 'reset' ? (
+            <Field label="Password" hint={mode === 'signup' ? 'At least 8 characters.' : undefined}>
+              {(id) => (
+                <Input
+                  id={id}
+                  type="password"
+                  autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                  minLength={mode === 'signup' ? 8 : undefined}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              )}
+            </Field>
+          ) : null}
+          {mode === 'signin' ? (
+            <button
+              type="button"
+              className="text-xs font-medium text-brand-700 hover:underline"
+              onClick={() => switchTo('reset')}
+            >
+              Forgot your password?
+            </button>
+          ) : null}
           <Button type="submit" variant="primary" className="w-full" loading={busy}>
-            {mode === 'signin' ? 'Sign in' : 'Create account'}
+            {SUBMIT[mode]}
           </Button>
           <p className="text-center text-xs text-slate-500">
-            {mode === 'signin' ? 'New to ProductFlow AI?' : 'Already have an account?'}{' '}
+            {mode === 'signin' ? 'New to ProductFlow AI?' : mode === 'signup' ? 'Already have an account?' : 'Remembered it?'}{' '}
             <button
               type="button"
               className="font-medium text-brand-700 hover:underline"
-              onClick={() => {
-                setMode(mode === 'signin' ? 'signup' : 'signin');
-                setError(null);
-                setNotice(null);
-              }}
+              onClick={() => switchTo(mode === 'signin' ? 'signup' : 'signin')}
             >
               {mode === 'signin' ? 'Create an account' : 'Sign in'}
             </button>

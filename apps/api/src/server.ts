@@ -1,4 +1,5 @@
 import cors from '@fastify/cors';
+import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
@@ -31,6 +32,8 @@ export interface ServerDeps {
   /** Storage for the delivery modules (Phases 3 to 7). Without it those requests answer 503. */
   deliveryStore?: ApiDeliveryStore;
   corsOrigin: string | string[];
+  /** Folder of the built web app (apps/web/dist). When set, the API also serves the app from the same address. */
+  webRoot?: string;
   logger?: boolean;
 }
 
@@ -301,6 +304,16 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     );
     return { result: result ?? null };
   });
+
+  if (deps.webRoot) {
+    const webRoot = deps.webRoot;
+    app.register(fastifyStatic, { root: webRoot, wildcard: false });
+    // The web app routes in the browser: any other page address gets index.html; unknown /api paths stay 404s.
+    app.setNotFoundHandler((request, reply) => {
+      if (request.method === 'GET' && !request.url.startsWith('/api/')) return reply.sendFile('index.html', webRoot);
+      return reply.status(404).send({ error: { code: 'not_found', message: 'Not found.' } });
+    });
+  }
 
   return app;
 }

@@ -1,0 +1,37 @@
+# Render Blueprint: deploys ProductFlow AI as one web service. The API serves
+# the built web app from the same address, so no CORS or proxy setup is needed.
+# See docs/DEPLOYMENT.md. Values marked `sync: false` are entered in the
+# Render dashboard when the Blueprint is created; they are never committed.
+services:
+  - type: web
+    name: productflow-ai
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build --workspace @productflow/web
+    startCommand: npm run start --workspace @productflow/api
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      - key: HOST
+        value: 0.0.0.0
+      - key: WEB_ROOT
+        value: ../web/dist
+      # Supabase: Project Settings → API (or API Keys)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # The same public values, built into the web app
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      # Anthropic: console.anthropic.com → API Keys
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Your Render address, e.g. https://productflow-ai.onrender.com
+      - key: CORS_ORIGIN
+        sync: false

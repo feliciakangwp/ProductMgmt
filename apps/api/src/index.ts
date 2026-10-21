@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { ClaudeProcessAnalyser, ClaudeStructuredRunner, createAnthropicMessageFn } from './ai/analyser';
 import { loadConfig } from './config';
 import { createServiceClient, createSupabaseDeliveryStore } from './delivery';
@@ -18,6 +19,7 @@ const app = buildServer({
   corsOrigin: config.CORS_ORIGIN.split(',').map((o) => o.trim()),
   authenticator: createSupabaseAuthenticator(config.SUPABASE_URL, config.SUPABASE_ANON_KEY),
   analyser: new ClaudeProcessAnalyser({ runner }),
+  webRoot: config.WEB_ROOT ? resolve(config.WEB_ROOT) : undefined,
   deliveryStore: config.SUPABASE_SERVICE_ROLE_KEY
     ? createSupabaseDeliveryStore(createServiceClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY))
     : undefined,

@@ -97,6 +97,10 @@ export interface AuthApi {
   /** Resolves `needsConfirmation` when the account must be confirmed by email first. */
   signUp(email: string, password: string, displayName: string): Promise<{ needsConfirmation: boolean }>;
   signOut(): Promise<void>;
+  /** Emails a link that opens the reset-password page signed in for a password change. */
+  requestPasswordReset(email: string): Promise<void>;
+  /** Sets a new password for the signed-in user (for example from a reset link). */
+  updatePassword(password: string): Promise<void>;
 }
 
 export type NewFieldInput = Pick<

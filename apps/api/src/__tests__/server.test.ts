@@ -314,3 +314,25 @@ describe('POST /api/rule-translation', () => {
     ).toBe(403);
   });
 });
+
+describe('serving the web app', () => {
+  it('serves files and falls back to index.html for app routes, but not for /api', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+    const root = mkdtempSync(join(tmpdir(), 'web-'));
+    writeFileSync(join(root, 'index.html'), '<div id="root"></div>');
+    writeFileSync(join(root, 'app.js'), 'console.log(1)');
+    const app = buildServer({
+      analyser: {} as ProcessAnalyser,
+      runner: fakeRunner(() => ({})),
+      authenticator: { authenticate: async () => null },
+      corsOrigin: '*',
+      webRoot: root,
+    });
+    expect((await app.inject({ url: '/app.js' })).body).toBe('console.log(1)');
+    expect((await app.inject({ url: '/projects/abc/stories' })).body).toContain('id="root"');
+    expect((await app.inject({ url: '/api/health' })).json()).toEqual({ status: 'ok' });
+    expect((await app.inject({ url: '/api/nope' })).statusCode).toBe(404);
+  });
+});

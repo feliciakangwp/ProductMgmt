@@ -111,13 +111,24 @@ export function createBackend(): Backend {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { display_name: displayName } },
+          // The confirmation email links back to this site, whichever address it is served from.
+          options: { data: { display_name: displayName }, emailRedirectTo: `${window.location.origin}/` },
         });
         if (error) throw new AppError(error.message, error.code ?? null);
         return { needsConfirmation: !data.session };
       },
       async signOut() {
         await supabase.auth.signOut();
+      },
+      async requestPasswordReset(email) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (error) throw new AppError(error.message, error.code ?? null);
+      },
+      async updatePassword(password) {
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) throw new AppError(error.message, error.code ?? null);
       },
     },
 

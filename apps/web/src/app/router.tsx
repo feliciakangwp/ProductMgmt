@@ -1,6 +1,7 @@
 import { createBrowserRouter, createMemoryRouter, Navigate } from 'react-router';
 import { backend } from '../lib/backend';
 import { LoginPage } from '../auth/LoginPage';
+import { ResetPasswordPage } from '../auth/ResetPasswordPage';
 import { ComingSoonPage } from '../modules/coming-soon/ComingSoonPage';
 import { ProcessListPage } from '../modules/processes/ProcessListPage';
 import { MembersPage } from '../modules/projects/MembersPage';
@@ -27,6 +28,7 @@ const createRouter = backend.mode === 'demo' ? createMemoryRouter : createBrowse
 
 export const router = createRouter([
   { path: '/login', element: <LoginPage /> },
+  { path: '/reset-password', element: <ResetPasswordPage /> },
   {
     element: (
       <RequireAuth>

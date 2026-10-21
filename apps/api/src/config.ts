@@ -9,6 +9,8 @@ const EnvSchema = z.object({
   /** Lets the API write delivery records after checking the caller's role. Never sent to browsers. */
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   ANTHROPIC_API_KEY: z.string().min(1),
+  /** Serve the built web app from this folder too (single-service deployment). */
+  WEB_ROOT: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-opus-5-5'),
   ANALYSIS_EFFORT: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
 });

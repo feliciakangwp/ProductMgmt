@@ -830,6 +830,8 @@ export function createBackend(): Backend {
         return { needsConfirmation: false };
       },
       async signOut() {},
+      async requestPasswordReset() {},
+      async updatePassword() {},
     },
 
     async listMyProjects(userId) {

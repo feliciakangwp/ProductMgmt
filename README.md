@@ -49,14 +49,14 @@ the repository, see [docs/SETUP.md](docs/SETUP.md#6-deploy-the-demo-to-github-pa
 
 ## Repository
 
-| Path              | Contents                                                        |
-| ----------------- | --------------------------------------------------------------- |
-| `apps/web`        | React + TypeScript + Vite + Tailwind web app                    |
-| `apps/api`        | Node + Fastify API holding the Anthropic key                    |
-| `packages/domain` | Shared domain model, schemas and logic                          |
-| `supabase`        | Database migrations and SQL tests                               |
-| `e2e`             | Playwright tests and a Docker-free local stack                  |
-| `docs`            | [Architecture](docs/ARCHITECTURE.md) and [setup](docs/SETUP.md) |
+| Path              | Contents                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| `apps/web`        | React + TypeScript + Vite + Tailwind web app                                                      |
+| `apps/api`        | Node + Fastify API holding the Anthropic key                                                      |
+| `packages/domain` | Shared domain model, schemas and logic                                                            |
+| `supabase`        | Database migrations and SQL tests                                                                 |
+| `e2e`             | Playwright tests and a Docker-free local stack                                                    |
+| `docs`            | [Architecture](docs/ARCHITECTURE.md), [setup](docs/SETUP.md) and [deployment](docs/DEPLOYMENT.md) |
 
 ## Quick start
 
@@ -68,4 +68,4 @@ cp apps/api/.env.example apps/api/.env         # same, plus ANTHROPIC_API_KEY
 npm run dev                             # http://localhost:5173
 ```
 
-See [docs/SETUP.md](docs/SETUP.md) for details and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
+See [docs/SETUP.md](docs/SETUP.md) for details, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) to go live with Supabase and Render, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
